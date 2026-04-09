@@ -2,6 +2,7 @@ node_modules/
 dist/
 .vscode/
 .DS_Store
+target/
 src-tauri/target/
 src-tauri/models/
 *.db
