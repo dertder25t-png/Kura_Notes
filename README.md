@@ -4,11 +4,22 @@ Desktop-first study notes and flashcard app built with Tauri 2, React, TypeScrip
 
 ## Quick Start
 
-1. Install dependencies:
+1. Install dependencies once:
    - `npm install`
-   - `cargo install tauri-cli`
-2. Run in development:
-   - `cargo tauri dev`
+2. Start the fastest feedback loop for UI work:
+   - `npm run dev`
+3. Start the full desktop app:
+   - `npm run dev:desktop`
+
+## Fast Checks
+
+Use these when you want to test a change without doing a full build from scratch:
+
+- UI only: `npm run dev`
+- Rust backend only: `npm run check:rust`
+- Full app sanity check: `npm run check:all`
+
+The npm scripts include the Tauri CLI, so you do not need a separate `cargo install tauri-cli` step.
 
 ## Current status
 

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:desktop": "cross-env CARGO_BUILD_JOBS=1 tauri dev",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "check:rust": "cargo check",
@@ -18,6 +19,8 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1",
+    "cross-env": "^7.0.3",
     "@types/react": "^18.3.8",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
