@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useDebounce } from '../../hooks/useDebounce';
 import { Note } from '../../types';
@@ -13,6 +13,7 @@ export default function NoteEditor({ noteId, classId }: Props) {
   const [text, setText] = useState('');
   const [title, setTitle] = useState('');
   const [status, setStatus] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const debouncedText = useDebounce(text, 3000);
   const debouncedTitle = useDebounce(title, 3000);
 
@@ -59,40 +60,69 @@ export default function NoteEditor({ noteId, classId }: Props) {
       .catch(() => setStatus('Save failed'));
   }, [debouncedText, debouncedTitle]);
 
+  useEffect(() => {
+    if (!noteId) {
+      return;
+    }
+    textareaRef.current?.focus();
+  }, [noteId]);
+
   if (!noteId) {
-    return <div style={{ padding: 24 }}>Select or create a note from the sidebar.</div>;
+    return (
+      <div style={{ padding: 'var(--spacing-xl)', color: '#5f6a66' }}>
+        Select or create a note from the sidebar.
+      </div>
+    );
   }
 
   return (
-    <section style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: 16, borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 8 }}>
+    <section
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--spacing-md)',
+        padding: 'var(--spacing-lg) var(--spacing-xl)'
+      }}
+    >
+      <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center' }}>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Note title"
           style={{
-            border: '1px solid var(--color-border)',
-            borderRadius: 8,
-            padding: '8px 10px',
+            border: 'none',
+            borderRadius: 'var(--radius-md)',
+            padding: '8px 0',
             flex: 1,
-            background: '#fff'
+            background: 'transparent',
+            fontSize: 30,
+            fontWeight: 600,
+            letterSpacing: -0.25,
+            color: 'var(--color-text)',
+            outline: 'none'
           }}
         />
-        <div style={{ fontSize: 12, minWidth: 70, textAlign: 'right', alignSelf: 'center' }}>{status}</div>
+        <div style={{ fontSize: 12, minWidth: 70, textAlign: 'right', color: '#5f6a66' }}>{status}</div>
       </div>
       <textarea
+        ref={textareaRef}
+        autoFocus
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="Write your lecture notes in Markdown..."
         style={{
           flex: 1,
           width: '100%',
-          padding: 20,
+          padding: 'var(--spacing-sm) 0 var(--spacing-lg)',
           border: 'none',
           outline: 'none',
           resize: 'none',
-          lineHeight: 1.5,
-          background: '#fbfbf8'
+          lineHeight: 1.8,
+          fontSize: 18,
+          background: 'transparent',
+          color: 'var(--color-text)',
+          fontFamily: 'var(--font-note)'
         }}
       />
     </section>

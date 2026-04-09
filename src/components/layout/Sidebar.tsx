@@ -31,6 +31,7 @@ export default function Sidebar({
   const [newFolderName, setNewFolderName] = useState('');
   const [isClassFormOpen, setIsClassFormOpen] = useState(false);
   const [isFolderFormOpen, setIsFolderFormOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [hoveredFolderId, setHoveredFolderId] = useState<number | null>(null);
   const [draggingNoteId, setDraggingNoteId] = useState<number | null>(null);
   const [dropTargetFolderId, setDropTargetFolderId] = useState<number | null>(null);
@@ -318,19 +319,34 @@ export default function Sidebar({
   return (
     <aside
       style={{
-        width: 280,
+        width: isCollapsed ? 86 : 320,
         background: 'linear-gradient(180deg, #1c2a2a 0%, #182121 100%)',
         color: '#f6f5ef',
-        padding: 16,
+        padding: 14,
         display: 'flex',
         flexDirection: 'column',
-        gap: 16,
-        borderRight: '1px solid #273433'
+        gap: 14,
+        borderRight: '1px solid #273433',
+        transition: 'width 240ms ease'
       }}
     >
-      <div>
-        <div style={{ fontWeight: 700, letterSpacing: 0.5, fontSize: 18 }}>Scholr</div>
-        <div style={{ color: 'var(--color-sidebar-muted)', fontSize: 12 }}>Classspaces</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontWeight: 700, letterSpacing: 0.5, fontSize: 18 }}>{isCollapsed ? 'S' : 'Scholr'}</div>
+          {!isCollapsed && <div style={{ color: 'var(--color-sidebar-muted)', fontSize: 12 }}>Classspaces</div>}
+        </div>
+        <button
+          onClick={() => setIsCollapsed((v) => !v)}
+          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          style={{
+            padding: '6px 10px',
+            background: '#1f3533',
+            borderColor: '#35504d',
+            color: '#e7f1ed'
+          }}
+        >
+          {isCollapsed ? '>' : '<'}
+        </button>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -349,11 +365,14 @@ export default function Sidebar({
               display: 'flex',
               alignItems: 'center',
               gap: 8,
+              justifyContent: isCollapsed ? 'center' : 'flex-start',
               textAlign: 'left',
               background: classItem.id === selectedClass ? '#263534' : '#1e2d2c',
               color: '#f6f5ef',
-              borderColor: classItem.id === selectedClass ? '#35504d' : '#2a3a38'
+              borderColor: classItem.id === selectedClass ? '#35504d' : '#2a3a38',
+              padding: isCollapsed ? '10px 6px' : '8px 12px'
             }}
+            title={classItem.name}
           >
             <span
               style={{
@@ -364,21 +383,21 @@ export default function Sidebar({
                 flexShrink: 0
               }}
             />
-            {classItem.name}
+            {isCollapsed ? classItem.name.slice(0, 1).toUpperCase() : classItem.name}
           </button>
         ))}
         {classes.length === 0 && (
           <div style={{ fontSize: 12, color: 'var(--color-sidebar-muted)' }}>No classes yet.</div>
         )}
 
-        {!isClassFormOpen ? (
+        {!isCollapsed && !isClassFormOpen ? (
           <button
             onClick={() => setIsClassFormOpen(true)}
             style={{ background: '#1f3533', borderColor: '#35504d', color: '#f6f5ef' }}
           >
             + Add Class
           </button>
-        ) : (
+        ) : !isCollapsed ? (
           <div style={{ display: 'grid', gap: 8, padding: 10, border: '1px solid #35504d', borderRadius: 10 }}>
             <input
               value={newClassName}
@@ -397,16 +416,34 @@ export default function Sidebar({
               <button onClick={() => setIsClassFormOpen(false)} style={{ flex: 1 }}>Cancel</button>
             </div>
           </div>
+        ) : null}
+
+        {isCollapsed && (
+          <button
+            onClick={() => setIsClassFormOpen((v) => !v)}
+            title="Add class"
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              background: '#1f3533',
+              borderColor: '#35504d',
+              color: '#f6f5ef'
+            }}
+          >
+            +
+          </button>
         )}
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={renameActiveClass} disabled={!selectedClass} style={{ flex: 1 }}>
-            Rename
-          </button>
-          <button onClick={deleteActiveClass} disabled={!selectedClass} style={{ flex: 1 }}>
-            Delete
-          </button>
-        </div>
+        {!isCollapsed && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={renameActiveClass} disabled={!selectedClass} style={{ flex: 1 }}>
+              Rename
+            </button>
+            <button onClick={deleteActiveClass} disabled={!selectedClass} style={{ flex: 1 }}>
+              Delete
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'grid', gap: 8 }}>
@@ -414,11 +451,12 @@ export default function Sidebar({
           onClick={() => setIsFolderFormOpen((v) => !v)}
           disabled={!selectedClass}
           style={{ background: '#21403a', borderColor: '#345952', color: '#fff', opacity: selectedClass ? 1 : 0.55 }}
+          title="Toggle folder creator"
         >
-          + New Folder
+          {isCollapsed ? 'F+' : '+ New Folder'}
         </button>
 
-        {isFolderFormOpen && (
+        {!isCollapsed && isFolderFormOpen && (
           <div style={{ display: 'grid', gap: 8, padding: 10, border: '1px solid #35504d', borderRadius: 10 }}>
             <input
               value={newFolderName}
@@ -442,12 +480,14 @@ export default function Sidebar({
             color: '#fff',
             opacity: selectedClass && selectedFolder ? 1 : 0.55
           }}
+            title="Create note"
         >
-          + New Note
+            {isCollapsed ? '+' : '+ New Note'}
         </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+        {!isCollapsed && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
         {folders.length === 0 && (
           <div style={{ fontSize: 12, color: 'var(--color-sidebar-muted)' }}>No folders yet for this class.</div>
         )}
@@ -612,7 +652,8 @@ export default function Sidebar({
             ))}
           </div>
         )}
-      </div>
+        </div>
+      )}
     </aside>
   );
 }

@@ -27,6 +27,12 @@ export interface FolderItem {
 
 export type TabPlacement = 'top' | 'left';
 
+export type AppMode = 'focus' | 'study' | 'organize';
+
+export interface UIState {
+  mode: AppMode;
+}
+
 export interface SaveNoteInput {
   classId: number;
   title: string;
