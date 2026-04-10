@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ClassItem, FolderItem, Note } from '../../types';
+import Icon from '../ui/Icon';
 
 interface Props {
   activeClassId: number | null;
@@ -320,13 +321,13 @@ export default function Sidebar({
     <aside
       style={{
         width: isCollapsed ? 86 : 320,
-        background: 'linear-gradient(180deg, #1c2a2a 0%, #182121 100%)',
+        background: 'linear-gradient(180deg, #141518 0%, #111214 100%)',
         color: '#f6f5ef',
         padding: 14,
         display: 'flex',
         flexDirection: 'column',
         gap: 14,
-        borderRight: '1px solid #273433',
+        borderRight: '1px solid var(--color-border)',
         transition: 'width 240ms ease'
       }}
     >
@@ -340,12 +341,12 @@ export default function Sidebar({
           title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           style={{
             padding: '6px 10px',
-            background: '#1f3533',
-            borderColor: '#35504d',
-            color: '#e7f1ed'
+            background: 'rgba(255, 255, 255, 0.04)',
+            borderColor: 'var(--color-border)',
+            color: 'var(--color-text)'
           }}
         >
-          {isCollapsed ? '>' : '<'}
+          <Icon name={isCollapsed ? 'chevron-right' : 'chevron-left'} />
         </button>
       </div>
 
@@ -367,9 +368,9 @@ export default function Sidebar({
               gap: 8,
               justifyContent: isCollapsed ? 'center' : 'flex-start',
               textAlign: 'left',
-              background: classItem.id === selectedClass ? '#263534' : '#1e2d2c',
-              color: '#f6f5ef',
-              borderColor: classItem.id === selectedClass ? '#35504d' : '#2a3a38',
+              background: classItem.id === selectedClass ? 'rgba(111, 126, 168, 0.18)' : 'rgba(255, 255, 255, 0.03)',
+              color: 'var(--color-text)',
+              borderColor: classItem.id === selectedClass ? 'rgba(111, 126, 168, 0.38)' : 'var(--color-border)',
               padding: isCollapsed ? '10px 6px' : '8px 12px'
             }}
             title={classItem.name}
@@ -383,7 +384,7 @@ export default function Sidebar({
                 flexShrink: 0
               }}
             />
-            {isCollapsed ? classItem.name.slice(0, 1).toUpperCase() : classItem.name}
+            {!isCollapsed && classItem.name}
           </button>
         ))}
         {classes.length === 0 && (
@@ -393,9 +394,11 @@ export default function Sidebar({
         {!isCollapsed && !isClassFormOpen ? (
           <button
             onClick={() => setIsClassFormOpen(true)}
-            style={{ background: '#1f3533', borderColor: '#35504d', color: '#f6f5ef' }}
+            style={{ background: 'rgba(255, 255, 255, 0.04)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
           >
-            + Add Class
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Icon name="plus" /> Add Class
+            </span>
           </button>
         ) : !isCollapsed ? (
           <div style={{ display: 'grid', gap: 8, padding: 10, border: '1px solid #35504d', borderRadius: 10 }}>
@@ -403,7 +406,7 @@ export default function Sidebar({
               value={newClassName}
               onChange={(e) => setNewClassName(e.target.value)}
               placeholder="Class or project name"
-              style={{ background: '#f6f8f7' }}
+              style={{ background: 'rgba(255, 255, 255, 0.04)' }}
             />
             <input
               value={newClassColor}
@@ -430,17 +433,21 @@ export default function Sidebar({
               color: '#f6f5ef'
             }}
           >
-            +
+            <Icon name="plus" />
           </button>
         )}
 
         {!isCollapsed && (
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={renameActiveClass} disabled={!selectedClass} style={{ flex: 1 }}>
-              Rename
+            <button onClick={renameActiveClass} disabled={!selectedClass} style={{ flex: 1 }} title="Rename class">
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="note" /> Rename
+              </span>
             </button>
-            <button onClick={deleteActiveClass} disabled={!selectedClass} style={{ flex: 1 }}>
-              Delete
+            <button onClick={deleteActiveClass} disabled={!selectedClass} style={{ flex: 1 }} title="Delete class">
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="trash" /> Delete
+              </span>
             </button>
           </div>
         )}
@@ -450,10 +457,10 @@ export default function Sidebar({
         <button
           onClick={() => setIsFolderFormOpen((v) => !v)}
           disabled={!selectedClass}
-          style={{ background: '#21403a', borderColor: '#345952', color: '#fff', opacity: selectedClass ? 1 : 0.55 }}
+          style={{ background: 'rgba(255, 255, 255, 0.04)', borderColor: 'var(--color-border)', color: 'var(--color-text)', opacity: selectedClass ? 1 : 0.55 }}
           title="Toggle folder creator"
         >
-          {isCollapsed ? 'F+' : '+ New Folder'}
+          {isCollapsed ? <Icon name="folder-plus" /> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="folder-plus" /> New Folder</span>}
         </button>
 
         {!isCollapsed && isFolderFormOpen && (
@@ -462,7 +469,7 @@ export default function Sidebar({
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               placeholder="Folder name"
-              style={{ background: '#f6f8f7' }}
+              style={{ background: 'rgba(255, 255, 255, 0.04)' }}
             />
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={createFolder} style={{ flex: 1 }}>Create</button>
@@ -475,14 +482,14 @@ export default function Sidebar({
           onClick={createNewNote}
           disabled={!selectedClass || !selectedFolder}
           style={{
-            background: '#e0683f',
-            borderColor: '#e0683f',
-            color: '#fff',
+            background: 'rgba(111, 126, 168, 0.18)',
+            borderColor: 'rgba(111, 126, 168, 0.32)',
+            color: 'var(--color-text)',
             opacity: selectedClass && selectedFolder ? 1 : 0.55
           }}
             title="Create note"
         >
-            {isCollapsed ? '+' : '+ New Note'}
+          {isCollapsed ? <Icon name="note" /> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="note" /> New Note</span>}
         </button>
       </div>
 
@@ -530,23 +537,23 @@ export default function Sidebar({
                   textAlign: 'left',
                   display: 'grid',
                   gap: 6,
-                  background: isActive ? '#2f4744' : '#1f2d2c',
-                  color: '#f6f5ef',
+                  background: isActive ? 'rgba(111, 126, 168, 0.16)' : 'rgba(255, 255, 255, 0.03)',
+                  color: 'var(--color-text)',
                   borderColor:
                     dropTargetFolderId === folder.id
-                      ? '#79be99'
+                        ? 'rgba(111, 126, 168, 0.5)'
                       : isActive
-                        ? '#4f706d'
-                        : '#2a3a38'
+                          ? 'rgba(111, 126, 168, 0.38)'
+                          : 'var(--color-border)'
                 }}
               >
                 <span style={{ fontWeight: 600 }}>Folder: {folder.name}</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#acc4ba', fontSize: 12 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-text-muted)', fontSize: 12 }}>
                   <span style={{ display: 'inline-flex', gap: 4 }}>
                     {notesInFolder.slice(0, 5).map((note) => (
                       <span
                         key={note.id}
-                        style={{ width: 8, height: 8, borderRadius: 999, background: '#7cb9a4', display: 'inline-block' }}
+                          style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--color-accent)', display: 'inline-block' }}
                       />
                     ))}
                   </span>
@@ -557,13 +564,13 @@ export default function Sidebar({
               <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                 <button
                   onClick={() => renameFolder(folder)}
-                  style={{ flex: 1, fontSize: 12, background: '#21312f', color: '#d6e4de', borderColor: '#35514b' }}
+                  style={{ flex: 1, fontSize: 12, background: 'rgba(255, 255, 255, 0.04)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
                 >
                   Rename
                 </button>
                 <button
                   onClick={() => deleteFolder(folder)}
-                  style={{ flex: 1, fontSize: 12, background: '#342522', color: '#f0dad5', borderColor: '#5a3832' }}
+                  style={{ flex: 1, fontSize: 12, background: 'rgba(255, 255, 255, 0.04)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
                 >
                   Delete
                 </button>
@@ -579,9 +586,9 @@ export default function Sidebar({
                     width: 230,
                     maxHeight: 200,
                     overflowY: 'auto',
-                    border: '1px solid #32524a',
+                    border: '1px solid var(--color-border)',
                     borderRadius: 10,
-                    background: '#152321',
+                    background: 'rgba(20, 21, 24, 0.98)',
                     zIndex: 4,
                     padding: 8,
                     display: 'grid',
@@ -606,9 +613,9 @@ export default function Sidebar({
                         onClick={() => onOpenNote(note)}
                         style={{
                           textAlign: 'left',
-                          background: note.id === activeNoteId ? '#31514b' : '#203430',
-                          color: '#f5f8f6',
-                          borderColor: '#3a6159'
+                          background: note.id === activeNoteId ? 'rgba(111, 126, 168, 0.16)' : 'rgba(255, 255, 255, 0.04)',
+                          color: 'var(--color-text)',
+                          borderColor: 'var(--color-border)'
                         }}
                       >
                         {note.title || 'Untitled'}
@@ -616,7 +623,7 @@ export default function Sidebar({
                       <div
                         style={{
                           fontSize: 11,
-                          color: '#d6e4de',
+                            color: 'var(--color-text-muted)',
                           opacity: 0.9,
                           padding: '2px 4px'
                         }}
@@ -632,8 +639,8 @@ export default function Sidebar({
         })}
 
         {selectedFolder && folderNotes.length > 0 && (
-          <div style={{ borderTop: '1px solid #2f4240', marginTop: 4, paddingTop: 8, display: 'grid', gap: 6 }}>
-            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, color: '#9db6ad' }}>
+          <div style={{ borderTop: '1px solid var(--color-border)', marginTop: 4, paddingTop: 8, display: 'grid', gap: 6 }}>
+            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--color-text-muted)' }}>
               Selected Folder Notes
             </div>
             {folderNotes.slice(0, 6).map((note) => (
@@ -642,9 +649,9 @@ export default function Sidebar({
                 onClick={() => onOpenNote(note)}
                 style={{
                   textAlign: 'left',
-                  background: note.id === activeNoteId ? '#2d413f' : '#1f2d2c',
-                  color: '#f6f5ef',
-                  borderColor: note.id === activeNoteId ? '#496865' : '#2a3a38'
+                  background: note.id === activeNoteId ? 'rgba(111, 126, 168, 0.16)' : 'rgba(255, 255, 255, 0.03)',
+                  color: 'var(--color-text)',
+                  borderColor: note.id === activeNoteId ? 'rgba(111, 126, 168, 0.38)' : 'var(--color-border)'
                 }}
               >
                 {note.title || 'Untitled'}

@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { FolderItem, Note } from '../../types';
+import { AppMode, CanvasLayoutMode, FolderItem, Note } from '../../types';
+import Icon from '../ui/Icon';
 
 interface Props {
   classId: number | null;
@@ -8,6 +9,12 @@ interface Props {
   folderName: string;
   notes: Note[];
   folders: FolderItem[];
+  layoutMode: CanvasLayoutMode;
+  appMode: AppMode;
+  isSettingsOpen: boolean;
+  onSetAppMode: (mode: AppMode) => void;
+  onToggleSettings: () => void;
+  onCycleLayoutMode: () => void;
   onOpenNote: (note: Note) => void;
   onNotesMutated: () => void;
   onNotesDeleted: (noteIds: number[]) => void;
@@ -40,10 +47,6 @@ function readLayoutKey(classId: number, folderId: number) {
   return `kura.folder.layout.${classId}.${folderId}`;
 }
 
-function readSettingsKey(classId: number, folderId: number) {
-  return `kura.folder.settings.${classId}.${folderId}`;
-}
-
 function loadLayout(classId: number, folderId: number): Record<number, NoteLayout> {
   const raw = window.localStorage.getItem(readLayoutKey(classId, folderId));
   if (!raw) {
@@ -60,15 +63,6 @@ function saveLayout(classId: number, folderId: number, layout: Record<number, No
   window.localStorage.setItem(readLayoutKey(classId, folderId), JSON.stringify(layout));
 }
 
-function loadSnapSetting(classId: number, folderId: number): boolean {
-  const raw = window.localStorage.getItem(readSettingsKey(classId, folderId));
-  return raw === '1';
-}
-
-function saveSnapSetting(classId: number, folderId: number, enabled: boolean) {
-  window.localStorage.setItem(readSettingsKey(classId, folderId), enabled ? '1' : '0');
-}
-
 function roundToGrid(value: number, enabled: boolean) {
   if (!enabled) {
     return value;
@@ -82,13 +76,18 @@ export default function FolderCanvas({
   folderName,
   notes,
   folders,
+  layoutMode,
+  appMode,
+  isSettingsOpen,
+  onSetAppMode,
+  onToggleSettings,
+  onCycleLayoutMode,
   onOpenNote,
   onNotesMutated,
   onNotesDeleted
 }: Props) {
   const [query, setQuery] = useState('');
   const [layout, setLayout] = useState<Record<number, NoteLayout>>({});
-  const [snapToGrid, setSnapToGrid] = useState(false);
   const [selectedNoteIds, setSelectedNoteIds] = useState<number[]>([]);
   const [batchTargetFolderId, setBatchTargetFolderId] = useState<number | null>(null);
   const [draggingId, setDraggingId] = useState<number | null>(null);
@@ -99,12 +98,10 @@ export default function FolderCanvas({
   useEffect(() => {
     if (!classId || !folderId) {
       setLayout({});
-      setSnapToGrid(false);
       return;
     }
 
     setLayout(loadLayout(classId, folderId));
-    setSnapToGrid(loadSnapSetting(classId, folderId));
   }, [classId, folderId]);
 
   useEffect(() => {
@@ -120,13 +117,7 @@ export default function FolderCanvas({
     saveLayout(classId, folderId, layout);
   }, [classId, folderId, layout]);
 
-  useEffect(() => {
-    if (!classId || !folderId) {
-      return;
-    }
-
-    saveSnapSetting(classId, folderId, snapToGrid);
-  }, [classId, folderId, snapToGrid]);
+  const snapToGrid = layoutMode === 'grid';
 
   const filtered = useMemo(() => {
     const value = query.trim().toLowerCase();
@@ -258,7 +249,7 @@ export default function FolderCanvas({
   }
 
   async function moveSelected() {
-    if (!classId || !batchTargetFolderId || selectedNoteIds.length === 0) {
+    if (!batchTargetFolderId || selectedNoteIds.length === 0) {
       return;
     }
 
@@ -267,7 +258,7 @@ export default function FolderCanvas({
         selectedNoteIds.map((noteId) =>
           invoke<Note>('move_note_to_folder', {
             noteId,
-            classId,
+            classId: classId ?? null,
             folderId: batchTargetFolderId
           })
         )
@@ -309,100 +300,152 @@ export default function FolderCanvas({
   }
 
   return (
-    <section style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#fbfaf5' }}>
+    <section style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--color-panel)' }}>
       <div
         style={{
-          padding: '14px 16px',
+          padding: '10px 14px',
           borderBottom: '1px solid var(--color-border)',
           display: 'flex',
           alignItems: 'center',
-          gap: 10
+          justifyContent: 'space-between',
+          gap: 10,
+          background: 'rgba(18, 19, 22, 0.94)'
         }}
       >
-        <strong>{folderName}</strong>
-        <span style={{ color: '#667168', fontSize: 13 }}>{notes.length} notes</span>
-        <div style={{ flex: 1 }} />
-        <label style={{ fontSize: 12, color: '#526058', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <strong style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <Icon name="folder" /> {folderName}
+          </strong>
+          <span style={{ color: 'var(--color-text-muted)', fontSize: 13, whiteSpace: 'nowrap' }}>{notes.length} notes</span>
+        </div>
+
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => onSetAppMode('focus')}
+            title="Focus"
+            style={{
+              width: 34,
+              height: 34,
+              padding: 0,
+              borderRadius: 10,
+              background: appMode === 'focus' ? 'rgba(111, 126, 168, 0.22)' : 'rgba(255, 255, 255, 0.03)'
+            }}
+          >
+            <Icon name="focus" />
+          </button>
+          <button
+            onClick={() => onSetAppMode('study')}
+            title="Study"
+            style={{
+              width: 34,
+              height: 34,
+              padding: 0,
+              borderRadius: 10,
+              background: appMode === 'study' ? 'rgba(111, 126, 168, 0.22)' : 'rgba(255, 255, 255, 0.03)'
+            }}
+          >
+            <Icon name="study" />
+          </button>
+          <button
+            onClick={onCycleLayoutMode}
+            title={`Layout mode: ${layoutMode}. Click to cycle.`}
+            style={{ width: 34, height: 34, padding: 0, borderRadius: 10, background: 'rgba(255, 255, 255, 0.03)' }}
+          >
+            <Icon
+              name={layoutMode === 'grid' ? 'grid' : layoutMode === 'column' ? 'layout-left' : 'move'}
+            />
+          </button>
+          <button
+            onClick={onToggleSettings}
+            title="Settings"
+            style={{
+              width: 34,
+              height: 34,
+              padding: 0,
+              borderRadius: 10,
+              background: isSettingsOpen ? 'rgba(111, 126, 168, 0.22)' : 'rgba(255, 255, 255, 0.03)'
+            }}
+          >
+            <Icon name="settings" />
+          </button>
+          <button onClick={resetLayout} title="Reset layout" style={{ width: 34, height: 34, padding: 0, borderRadius: 10, background: 'rgba(255, 255, 255, 0.03)' }}>
+            <Icon name="reset" />
+          </button>
+          <button
+            onClick={() => {
+              if (selectedNoteIds.length === 0) {
+                setSelectedNoteIds(filtered.map((note) => note.id));
+              } else {
+                setSelectedNoteIds([]);
+              }
+            }}
+            title={selectedNoteIds.length === 0 ? 'Select visible' : 'Clear selection'}
+            style={{ width: 34, height: 34, padding: 0, borderRadius: 10, background: 'rgba(255, 255, 255, 0.03)' }}
+          >
+            <Icon name={selectedNoteIds.length === 0 ? 'select' : 'x'} />
+          </button>
+          <select
+            value={batchTargetFolderId ?? ''}
+            onChange={(event) => setBatchTargetFolderId(Number(event.target.value))}
+            style={{ borderRadius: 10, border: '1px solid var(--color-border)', height: 34, padding: '0 8px', background: 'rgba(255, 255, 255, 0.03)' }}
+          >
+            {folders.map((folder) => (
+              <option key={folder.id} value={folder.id}>
+                Move to {folder.name}
+              </option>
+            ))}
+          </select>
+          <button onClick={moveSelected} disabled={selectedNoteIds.length === 0} title="Move selected" style={{ width: 34, height: 34, padding: 0, borderRadius: 10, background: 'rgba(255, 255, 255, 0.03)' }}>
+            <Icon name="move" />
+          </button>
+          <button onClick={deleteSelected} disabled={selectedNoteIds.length === 0} title="Delete selected" style={{ width: 34, height: 34, padding: 0, borderRadius: 10, background: 'rgba(255, 255, 255, 0.03)', borderColor: 'var(--color-border)' }}>
+            <Icon name="trash" />
+          </button>
           <input
-            type="checkbox"
-            checked={snapToGrid}
-            onChange={(event) => setSnapToGrid(event.target.checked)}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter notes"
+            style={{ width: 220, height: 34, padding: '0 10px', borderRadius: 10, background: 'rgba(255, 255, 255, 0.03)' }}
           />
-          Snap to grid
-        </label>
-        <button onClick={resetLayout} style={{ background: '#fff' }}>
-          Reset Layout
-        </button>
-        <button
-          onClick={() => {
-            if (selectedNoteIds.length === 0) {
-              setSelectedNoteIds(filtered.map((note) => note.id));
-            } else {
-              setSelectedNoteIds([]);
-            }
-          }}
-          style={{ background: '#fff' }}
-        >
-          {selectedNoteIds.length === 0 ? 'Select Visible' : 'Clear Selection'}
-        </button>
-        <select
-          value={batchTargetFolderId ?? ''}
-          onChange={(event) => setBatchTargetFolderId(Number(event.target.value))}
-          style={{ borderRadius: 8, border: '1px solid var(--color-border)', padding: '6px 8px', background: '#fff' }}
-        >
-          {folders.map((folder) => (
-            <option key={folder.id} value={folder.id}>
-              Move selected to {folder.name}
-            </option>
-          ))}
-        </select>
-        <button onClick={moveSelected} disabled={selectedNoteIds.length === 0} style={{ background: '#f1f7f2' }}>
-          Move Selected ({selectedNoteIds.length})
-        </button>
-        <button onClick={deleteSelected} disabled={selectedNoteIds.length === 0} style={{ background: '#fff0ee', borderColor: '#e2bab2' }}>
-          Delete Selected
-        </button>
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filter notes"
-          style={{ width: 250, background: '#fff' }}
-        />
+        </div>
       </div>
 
       <div style={{ position: 'relative', flex: 1, overflow: 'auto', padding: 16 }}>
         {filtered.length === 0 && (
-          <div style={{ color: '#667168', paddingTop: 10 }}>No notes found in this folder.</div>
+          <div style={{ color: 'var(--color-text-muted)', paddingTop: 10 }}>No notes found in this folder.</div>
         )}
 
         {filtered.map((note, index) => {
           const position = getNoteLayout(note.id);
+          const isColumn = layoutMode === 'column';
 
           return (
             <div
               key={note.id}
-              onPointerDown={(event) => startDrag(note.id, event)}
-              onPointerMove={onDrag}
-              onPointerUp={endDrag}
+              onPointerDown={isColumn ? undefined : (event) => startDrag(note.id, event)}
+              onPointerMove={isColumn ? undefined : onDrag}
+              onPointerUp={isColumn ? undefined : endDrag}
               style={{
-                position: 'absolute',
-                left: position.x,
-                top: position.y,
-                width: position.width,
-                height: position.height,
+                position: isColumn ? 'relative' : 'absolute',
+                left: isColumn ? undefined : position.x,
+                top: isColumn ? undefined : position.y,
+                width: isColumn ? '100%' : position.width,
+                height: isColumn ? 64 : position.height,
+                marginBottom: isColumn ? 10 : 0,
                 border: '1px solid #cfdbcc',
                 borderRadius: 14,
-                background: '#fff',
+                background: 'rgba(255, 255, 255, 0.04)',
                 padding: 12,
-                cursor: draggingId === note.id ? 'grabbing' : 'grab',
-                boxShadow: draggingId === note.id ? '0 6px 16px rgba(0,0,0,0.18)' : '0 3px 8px rgba(0,0,0,0.08)',
+                cursor: isColumn ? 'default' : draggingId === note.id ? 'grabbing' : 'grab',
+                boxShadow: draggingId === note.id ? '0 6px 16px rgba(0,0,0,0.18)' : '0 2px 6px rgba(0,0,0,0.12)',
                 userSelect: 'none',
                 display: 'flex',
-                flexDirection: 'column',
+                flexDirection: isColumn ? 'row' : 'column',
+                alignItems: isColumn ? 'center' : undefined,
                 justifyContent: 'space-between'
               }}
             >
-              <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--color-text)' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <input
                     type="checkbox"
@@ -418,32 +461,34 @@ export default function FolderCanvas({
                 onClick={() => onOpenNote(note)}
                 style={{
                   alignSelf: 'flex-start',
-                  background: '#f3f7f2',
-                  borderColor: '#bdd0bc',
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  borderColor: 'var(--color-border)',
                   fontSize: 12,
                   padding: '6px 10px'
                 }}
               >
-                Open note
+                <Icon name="note" size={12} />
               </button>
 
-              <div
-                onPointerDown={(event) => startResize(note.id, event)}
-                onPointerMove={onResize}
-                onPointerUp={endResize}
-                title="Resize"
-                style={{
-                  position: 'absolute',
-                  right: 6,
-                  bottom: 6,
-                  width: 14,
-                  height: 14,
-                  borderRadius: 3,
-                  border: '1px solid #b9cac0',
-                  background: '#eff5ef',
-                  cursor: 'se-resize'
-                }}
-              />
+              {!isColumn && (
+                <div
+                  onPointerDown={(event) => startResize(note.id, event)}
+                  onPointerMove={onResize}
+                  onPointerUp={endResize}
+                  title="Resize"
+                  style={{
+                    position: 'absolute',
+                    right: 6,
+                    bottom: 6,
+                    width: 14,
+                    height: 14,
+                    borderRadius: 3,
+                    border: '1px solid var(--color-border)',
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    cursor: 'se-resize'
+                  }}
+                />
+              )}
             </div>
           );
         })}

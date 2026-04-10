@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 #[serde(rename_all = "camelCase")]
 pub struct Note {
     pub id: i64,
-    pub class_id: i64,
+    pub class_id: Option<i64>,
     pub folder_id: Option<i64>,
     pub title: String,
     pub raw_content: String,
@@ -35,12 +35,16 @@ fn slugify(input: &str) -> String {
     out.trim_matches('_').to_string()
 }
 
-fn resolve_class_folder(conn: &Connection, class_id: i64) -> anyhow::Result<String> {
+fn resolve_class_folder(conn: &Connection, class_id: Option<i64>) -> anyhow::Result<String> {
+    let Some(class_id) = class_id else {
+        return Ok("untagged".to_string());
+    };
+
     let class_name: String = conn.query_row(
         "SELECT name FROM classes WHERE id = ?1",
         [class_id],
         |r| r.get(0),
-    )?;
+    ).unwrap_or_else(|_| "untagged".to_string());
     let slug = slugify(&class_name);
     if slug.is_empty() {
         Ok("general".to_string())
@@ -70,7 +74,7 @@ fn resolve_folder_folder(conn: &Connection, folder_id: Option<i64>) -> anyhow::R
 fn ensure_file_path(
     conn: &Connection,
     project_root: &Path,
-    class_id: i64,
+    class_id: Option<i64>,
     folder_id: Option<i64>,
     existing: Option<String>,
 ) -> anyhow::Result<String> {
@@ -95,27 +99,28 @@ pub fn save_note(
     conn: &Connection,
     project_root: &Path,
     note_id: Option<i64>,
-    class_id: i64,
+    class_id: Option<i64>,
     folder_id: Option<i64>,
     title: String,
     raw_content: String,
 ) -> anyhow::Result<Note> {
     if let Some(id) = note_id {
-        let (current_file_path, current_folder_id): (Option<String>, Option<i64>) = conn.query_row(
-            "SELECT file_path, folder_id FROM notes WHERE id = ?1",
+        let (current_file_path, current_folder_id, current_class_id): (Option<String>, Option<i64>, Option<i64>) = conn.query_row(
+            "SELECT file_path, folder_id, class_id FROM notes WHERE id = ?1",
             [id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;
 
         let resolved_folder_id = folder_id.or(current_folder_id);
-        let file_path = ensure_file_path(conn, project_root, class_id, resolved_folder_id, current_file_path)?;
+        let resolved_class_id = class_id.or(current_class_id);
+        let file_path = ensure_file_path(conn, project_root, resolved_class_id, resolved_folder_id, current_file_path)?;
         std::fs::write(&file_path, &raw_content)?;
 
         conn.execute(
             "UPDATE notes
              SET class_id = ?1, folder_id = ?2, title = ?3, raw_content = ?4, file_path = ?5, updated_at = datetime('now')
              WHERE id = ?6",
-            params![class_id, resolved_folder_id, title, raw_content, file_path, id],
+            params![resolved_class_id, resolved_folder_id, title, raw_content, file_path, id],
         )?;
 
         return load_note(conn, id);
@@ -159,15 +164,15 @@ pub fn load_note(conn: &Connection, note_id: i64) -> anyhow::Result<Note> {
     Ok(note)
 }
 
-pub fn list_notes(conn: &Connection, class_id: i64) -> anyhow::Result<Vec<Note>> {
+pub fn list_notes(conn: &Connection, class_id: Option<i64>) -> anyhow::Result<Vec<Note>> {
     let mut stmt = conn.prepare(
         "SELECT id, class_id, folder_id, title, raw_content, study_content, audio_transcript, file_path, created_at, updated_at
          FROM notes
-         WHERE class_id = ?1
+         WHERE (?1 IS NULL OR class_id = ?1)
          ORDER BY updated_at DESC",
     )?;
 
-    let rows = stmt.query_map([class_id], |r| {
+    let rows = stmt.query_map(params![class_id], |r| {
         Ok(Note {
             id: r.get(0)?,
             class_id: r.get(1)?,
@@ -191,13 +196,13 @@ pub fn list_notes(conn: &Connection, class_id: i64) -> anyhow::Result<Vec<Note>>
 
 pub fn list_notes_by_folder(
     conn: &Connection,
-    class_id: i64,
+    class_id: Option<i64>,
     folder_id: i64,
 ) -> anyhow::Result<Vec<Note>> {
     let mut stmt = conn.prepare(
         "SELECT id, class_id, folder_id, title, raw_content, study_content, audio_transcript, file_path, created_at, updated_at
          FROM notes
-         WHERE class_id = ?1 AND folder_id = ?2
+         WHERE folder_id = ?2 AND (?1 IS NULL OR class_id = ?1)
          ORDER BY updated_at DESC",
     )?;
 
@@ -226,7 +231,7 @@ pub fn list_notes_by_folder(
 pub fn move_note_to_folder(
     conn: &Connection,
     note_id: i64,
-    class_id: i64,
+    class_id: Option<i64>,
     folder_id: i64,
 ) -> anyhow::Result<Note> {
     conn.execute(

@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS classes (
 
 CREATE TABLE IF NOT EXISTS notes (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
-  class_id         INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+  class_id         INTEGER REFERENCES classes(id) ON DELETE SET NULL,
   folder_id        INTEGER REFERENCES folders(id) ON DELETE SET NULL,
   title            TEXT,
   raw_content      TEXT DEFAULT '',
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS notes (
 
 CREATE TABLE IF NOT EXISTS folders (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  class_id    INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+  class_id    INTEGER REFERENCES classes(id) ON DELETE SET NULL,
   name        TEXT NOT NULL,
   created_at  TEXT DEFAULT (datetime('now'))
 );

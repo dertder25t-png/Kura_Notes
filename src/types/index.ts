@@ -7,7 +7,7 @@ export interface ClassItem {
 
 export interface Note {
   id: number;
-  classId: number;
+  classId?: number | null;
   folderId?: number | null;
   title: string;
   rawContent: string;
@@ -20,12 +20,15 @@ export interface Note {
 
 export interface FolderItem {
   id: number;
-  classId: number;
+  classId?: number | null;
   name: string;
   createdAt?: string;
 }
 
 export type TabPlacement = 'top' | 'left';
+export type NavPlacement = 'left' | 'top';
+export type CanvasLayoutMode = 'grid' | 'column' | 'free';
+export type QuickActionsMode = 'rail' | 'island';
 
 export type AppMode = 'focus' | 'study' | 'organize';
 

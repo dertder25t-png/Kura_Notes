@@ -1,5 +1,6 @@
 import { PointerEvent, useMemo, useRef, useState } from 'react';
 import { ToolDefinition, ToolRenderContext } from './toolRegistry';
+import Icon from '../ui/Icon';
 
 interface Position {
   x: number;
@@ -115,12 +116,12 @@ export default function ToolDock({ hidden, onToggleHidden, tools, context }: Pro
           right: 18,
           top: 18,
           zIndex: 100,
-          background: '#1f2f2c',
-          color: '#f5f7f5',
-          borderColor: '#324b46'
+          background: 'rgba(255, 255, 255, 0.05)',
+          color: 'var(--color-text)',
+          borderColor: 'var(--color-border)'
         }}
       >
-        Show Toolbar
+        <Icon name="grid" />
       </button>
     );
   }
@@ -133,11 +134,11 @@ export default function ToolDock({ hidden, onToggleHidden, tools, context }: Pro
         top: position.y,
         zIndex: 100,
         width: 250,
-        border: '1px solid #3b544d',
+        border: '1px solid var(--color-border)',
         borderRadius: 12,
-        background: '#182826',
-        color: '#f0f5f3',
-        boxShadow: '0 8px 18px rgba(0,0,0,0.25)'
+        background: 'rgba(20, 21, 24, 0.92)',
+        color: 'var(--color-text)',
+        backdropFilter: 'blur(10px)'
       }}
     >
       <div
@@ -146,7 +147,7 @@ export default function ToolDock({ hidden, onToggleHidden, tools, context }: Pro
         onPointerUp={onDragEnd}
         style={{
           cursor: isDragging ? 'grabbing' : 'grab',
-          borderBottom: '1px solid #2f4741',
+          borderBottom: '1px solid var(--color-border)',
           padding: '8px 10px',
           display: 'flex',
           alignItems: 'center',
@@ -156,27 +157,28 @@ export default function ToolDock({ hidden, onToggleHidden, tools, context }: Pro
         <strong style={{ fontSize: 13, letterSpacing: 0.2 }}>Tool Dock</strong>
         <button
           onClick={onToggleHidden}
-          style={{ background: 'transparent', borderColor: '#48645d', color: '#e0ece8', padding: '3px 8px' }}
+          style={{ background: 'transparent', borderColor: 'var(--color-border)', color: 'var(--color-text)', padding: '3px 8px' }}
         >
-          Hide
+          <Icon name="chevron-right" />
         </button>
       </div>
 
       <div style={{ display: 'grid', gap: 8, padding: 10 }}>
         {pinnedTools.length > 0 && (
-          <section style={{ display: 'grid', gap: 6, padding: 8, border: '1px solid #2f4741', borderRadius: 10 }}>
-            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, color: '#9db6ad' }}>
+          <section style={{ display: 'grid', gap: 6, padding: 8, border: '1px solid var(--color-border)', borderRadius: 10 }}>
+            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--color-text-muted)' }}>
               Pinned
             </div>
             {pinnedTools.map((tool) => (
               <div key={tool.id} style={{ display: 'grid', gap: 4 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: '#c9ddd5' }}>{tool.label}</span>
+                  <span style={{ fontSize: 12, color: 'var(--color-text)' }}>{tool.label}</span>
                   <button
                     onClick={() => togglePin(tool.id)}
-                    style={{ padding: '2px 6px', fontSize: 11, background: '#203430', color: '#d6e4de', borderColor: '#37554d' }}
+                    style={{ padding: '2px 6px', fontSize: 11, background: 'rgba(255, 255, 255, 0.04)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
+                    title={pinned.includes(tool.id) ? 'Unpin' : 'Pin'}
                   >
-                    Unpin
+                    <Icon name={pinned.includes(tool.id) ? 'unpin' : 'pin'} size={12} />
                   </button>
                 </div>
                 {tool.render(context)}
@@ -186,19 +188,20 @@ export default function ToolDock({ hidden, onToggleHidden, tools, context }: Pro
         )}
 
         {Object.entries(groupedTools).map(([groupName, items]) => (
-          <section key={groupName} style={{ display: 'grid', gap: 6, padding: 8, border: '1px solid #2f4741', borderRadius: 10 }}>
-            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, color: '#9db6ad' }}>
+          <section key={groupName} style={{ display: 'grid', gap: 6, padding: 8, border: '1px solid var(--color-border)', borderRadius: 10 }}>
+            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--color-text-muted)' }}>
               {groupName}
             </div>
             {items.map((tool) => (
               <div key={tool.id} style={{ display: 'grid', gap: 4 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: '#c9ddd5' }}>{tool.label}</span>
+                  <span style={{ fontSize: 12, color: 'var(--color-text)' }}>{tool.label}</span>
                   <button
                     onClick={() => togglePin(tool.id)}
-                    style={{ padding: '2px 6px', fontSize: 11, background: '#203430', color: '#d6e4de', borderColor: '#37554d' }}
+                    style={{ padding: '2px 6px', fontSize: 11, background: 'rgba(255, 255, 255, 0.04)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
+                    title={pinned.includes(tool.id) ? 'Pinned' : 'Pin'}
                   >
-                    {pinned.includes(tool.id) ? 'Pinned' : 'Pin'}
+                    <Icon name={pinned.includes(tool.id) ? 'unpin' : 'pin'} size={12} />
                   </button>
                 </div>
                 {tool.render(context)}

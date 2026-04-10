@@ -40,14 +40,14 @@ export default function NoteEditor({ noteId, classId }: Props) {
   }, [debouncedText, debouncedTitle, note]);
 
   useEffect(() => {
-    if (!note || !classId || !isDirty) {
+    if (!note || !isDirty) {
       return;
     }
 
     setStatus('Saving...');
     invoke<Note>('save_note', {
       noteId: note.id,
-      classId,
+      classId: classId ?? note.classId ?? null,
       folderId: note.folderId ?? null,
       title: debouncedTitle,
       rawContent: debouncedText
@@ -96,14 +96,14 @@ export default function NoteEditor({ noteId, classId }: Props) {
             padding: '8px 0',
             flex: 1,
             background: 'transparent',
-            fontSize: 30,
+            fontSize: 24,
             fontWeight: 600,
-            letterSpacing: -0.25,
-            color: 'var(--color-text)',
+            letterSpacing: -0.2,
+            color: 'rgba(236, 238, 242, 0.88)',
             outline: 'none'
           }}
         />
-        <div style={{ fontSize: 12, minWidth: 70, textAlign: 'right', color: '#5f6a66' }}>{status}</div>
+        <div style={{ fontSize: 12, minWidth: 70, textAlign: 'right', color: 'var(--color-text-muted)' }}>{status}</div>
       </div>
       <textarea
         ref={textareaRef}
@@ -119,7 +119,7 @@ export default function NoteEditor({ noteId, classId }: Props) {
           outline: 'none',
           resize: 'none',
           lineHeight: 1.8,
-          fontSize: 18,
+          fontSize: 15,
           background: 'transparent',
           color: 'var(--color-text)',
           fontFamily: 'var(--font-note)'

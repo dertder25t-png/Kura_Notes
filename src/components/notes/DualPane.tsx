@@ -15,13 +15,14 @@ type RightPanel = 'study' | 'flashcards';
 export default function DualPane({ noteId, classId, rightPanel, mode }: Props) {
   if (mode === 'focus') {
     return (
-      <div style={{ height: '100%', display: 'flex', justifyContent: 'center', padding: 'var(--spacing-xl)' }}>
+      <div style={{ height: '100%', display: 'flex', justifyContent: 'center', padding: 'var(--spacing-xl)', background: 'var(--color-panel)' }}>
         <div
           style={{
             width: 'min(100%, 1150px)',
             height: '100%',
             borderRadius: 'var(--radius-lg)',
-            background: 'rgba(255, 255, 255, 0.56)',
+            background: 'rgba(255, 255, 255, 0.02)',
+            border: '1px solid var(--color-border)',
             backdropFilter: 'blur(3px)'
           }}
         >
@@ -49,7 +50,7 @@ export default function DualPane({ noteId, classId, rightPanel, mode }: Props) {
           style={{
             flex: 1,
             overflow: 'hidden',
-            background: '#fff',
+            background: 'var(--color-panel)',
             transform: 'translateX(0)',
             opacity: 1,
             transition: 'transform 220ms ease, opacity 220ms ease'

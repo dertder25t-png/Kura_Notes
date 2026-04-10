@@ -86,18 +86,6 @@ pub fn update_class(
 }
 
 pub fn delete_class(conn: &Connection, class_id: i64) -> anyhow::Result<()> {
-	let note_count: i64 = conn.query_row(
-		"SELECT COUNT(*) FROM notes WHERE class_id = ?1",
-		[class_id],
-		|r| r.get(0),
-	)?;
-
-	if note_count > 0 {
-		anyhow::bail!(
-			"Cannot delete a class that still has notes. Move or delete notes first."
-		);
-	}
-
 	conn.execute("DELETE FROM classes WHERE id = ?1", [class_id])?;
 
 	if conn.changes() == 0 {

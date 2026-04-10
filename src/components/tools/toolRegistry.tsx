@@ -1,5 +1,6 @@
 import SynthesizeButton from '../ai/SynthesizeButton';
 import { TabPlacement } from '../../types';
+import Icon from '../ui/Icon';
 
 export type RightPanel = 'study' | 'flashcards';
 
@@ -28,9 +29,15 @@ export const defaultTools: ToolDefinition[] = [
     render: (ctx) => (
       <button
         onClick={() => ctx.setRightPanel('study')}
-        style={{ background: ctx.rightPanel === 'study' ? '#dff1e4' : '#fff' }}
+        title="Study mode"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          background: ctx.rightPanel === 'study' ? 'rgba(111, 126, 168, 0.18)' : 'rgba(255, 255, 255, 0.03)'
+        }}
       >
-        Study Mode
+        <Icon name="study" /> Study
       </button>
     )
   },
@@ -42,9 +49,15 @@ export const defaultTools: ToolDefinition[] = [
     render: (ctx) => (
       <button
         onClick={() => ctx.setRightPanel('flashcards')}
-        style={{ background: ctx.rightPanel === 'flashcards' ? '#dff1e4' : '#fff' }}
+        title="Flashcards"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          background: ctx.rightPanel === 'flashcards' ? 'rgba(111, 126, 168, 0.18)' : 'rgba(255, 255, 255, 0.03)'
+        }}
       >
-        Flashcards
+        <Icon name="flashcards" /> Flashcards
       </button>
     )
   },
@@ -62,9 +75,10 @@ export const defaultTools: ToolDefinition[] = [
     render: (ctx) => (
       <button
         onClick={() => ctx.setTabPlacement('top')}
-        style={{ background: ctx.tabPlacement === 'top' ? '#dff1e4' : '#fff' }}
+        title="Tabs on top"
+        style={{ display: 'flex', alignItems: 'center', gap: 8, background: ctx.tabPlacement === 'top' ? 'rgba(111, 126, 168, 0.18)' : 'rgba(255, 255, 255, 0.03)' }}
       >
-        Tabs Top
+        <Icon name="layout-top" /> Top
       </button>
     )
   },
@@ -75,9 +89,10 @@ export const defaultTools: ToolDefinition[] = [
     render: (ctx) => (
       <button
         onClick={() => ctx.setTabPlacement('left')}
-        style={{ background: ctx.tabPlacement === 'left' ? '#dff1e4' : '#fff' }}
+        title="Tabs on left"
+        style={{ display: 'flex', alignItems: 'center', gap: 8, background: ctx.tabPlacement === 'left' ? 'rgba(111, 126, 168, 0.18)' : 'rgba(255, 255, 255, 0.03)' }}
       >
-        Tabs Left
+        <Icon name="layout-left" /> Left
       </button>
     )
   }

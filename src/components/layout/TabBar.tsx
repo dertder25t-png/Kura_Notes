@@ -1,4 +1,5 @@
 import { TabPlacement } from '../../types';
+import Icon from '../ui/Icon';
 
 export interface NoteTab {
   id: string;
@@ -26,9 +27,9 @@ export default function TabBar({ tabs, activeTabId, placement, onSelectTab, onCl
       style={{
         display: 'flex',
         flexDirection: isLeft ? 'column' : 'row',
-        gap: 6,
+        gap: 4,
         padding: 8,
-        background: '#f2eee4',
+        background: 'rgba(255, 255, 255, 0.02)',
         borderRight: isLeft ? '1px solid var(--color-border)' : 'none',
         borderBottom: !isLeft ? '1px solid var(--color-border)' : 'none',
         minWidth: isLeft ? 210 : undefined,
@@ -47,10 +48,10 @@ export default function TabBar({ tabs, activeTabId, placement, onSelectTab, onCl
               alignItems: 'center',
               gap: 6,
               minWidth: isLeft ? 0 : 190,
-              border: `1px solid ${isActive ? '#36574f' : '#bec8bc'}`,
+              border: `1px solid ${isActive ? 'rgba(111, 126, 168, 0.4)' : 'rgba(255, 255, 255, 0.06)'}`,
               borderRadius: 10,
-              background: isActive ? '#ffffff' : '#e7ece4',
-              padding: '8px 10px'
+              background: isActive ? 'rgba(111, 126, 168, 0.16)' : 'rgba(255, 255, 255, 0.03)',
+              padding: '7px 10px'
             }}
           >
             <button
@@ -65,11 +66,14 @@ export default function TabBar({ tabs, activeTabId, placement, onSelectTab, onCl
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
-                color: '#172420'
+                color: 'var(--color-text)'
               }}
               title={tab.title}
             >
-              {tab.title || 'Untitled'}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="note" size={14} />
+                {tab.title || 'Untitled'}
+              </span>
             </button>
             <button
               onClick={() => onCloseTab(tab.id)}
@@ -77,11 +81,11 @@ export default function TabBar({ tabs, activeTabId, placement, onSelectTab, onCl
                 border: 'none',
                 background: 'transparent',
                 padding: 0,
-                color: '#6c786f'
+                color: 'var(--color-text-muted)'
               }}
               title="Close tab"
             >
-              x
+              <Icon name="x" />
             </button>
           </div>
         );
