@@ -4,8 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "dev:desktop": "cross-env CARGO_BUILD_JOBS=1 tauri dev",
+    "dev": "cross-env CARGO_BUILD_JOBS=1 tauri dev",
+    "dev:web": "vite",
+    "dev:desktop": "npm run dev",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "check:rust": "cargo check",

@@ -368,6 +368,14 @@ export default function App() {
     }
   }
 
+  function triggerEditorAction(action: 'heading' | 'bullet' | 'quote' | 'table' | 'image' | 'code' | 'flashcard' | 'indent' | 'outdent') {
+    window.dispatchEvent(new CustomEvent('kura:editor-action', { detail: action }));
+  }
+
+  function flushEditorNow() {
+    window.dispatchEvent(new Event('kura:editor-flush'));
+  }
+
   useEffect(() => {
     if (attemptedInstantCapture.current || activeTabId) {
       return;
@@ -564,23 +572,27 @@ export default function App() {
           <div
             style={{
               position: 'absolute',
-              top: 'var(--spacing-md)',
-              right: 'var(--spacing-lg)',
+              top: '50%',
+              left: 'var(--spacing-md)',
+              transform: 'translateY(-50%)',
               zIndex: 20,
-              display: 'inline-flex',
-              gap: 6,
-              padding: 6,
-              borderRadius: 999,
+              display: 'grid',
+              gap: 8,
+              padding: 8,
+              borderRadius: 16,
               border: '1px solid var(--color-border)',
               background: 'rgba(19, 20, 23, 0.92)',
               backdropFilter: 'blur(6px)'
             }}
           >
           <button
-            onClick={() => setAppMode('focus')}
+            onClick={() => {
+              flushEditorNow();
+              setAppMode('focus');
+            }}
             title="Focus"
             style={{
-              borderRadius: 999,
+              borderRadius: 10,
               width: 34,
               height: 34,
               padding: 0,
@@ -592,10 +604,13 @@ export default function App() {
             <Icon name="focus" />
           </button>
           <button
-            onClick={() => setAppMode('study')}
+            onClick={() => {
+              flushEditorNow();
+              setAppMode('study');
+            }}
             title="Study"
             style={{
-              borderRadius: 999,
+              borderRadius: 10,
               width: 34,
               height: 34,
               padding: 0,
@@ -607,10 +622,13 @@ export default function App() {
             <Icon name="study" />
           </button>
           <button
-            onClick={() => setAppMode('organize')}
+            onClick={() => {
+              flushEditorNow();
+              setAppMode('organize');
+            }}
             title="Organize"
             style={{
-              borderRadius: 999,
+              borderRadius: 10,
               width: 34,
               height: 34,
               padding: 0,
@@ -622,10 +640,18 @@ export default function App() {
             <Icon name="organize" />
           </button>
           <button
-            onClick={() => setRightPanel((current) => (current === 'study' ? 'flashcards' : 'study'))}
+            onClick={() => {
+              flushEditorNow();
+              if (rightPanel === 'flashcards') {
+                setRightPanel('study');
+                return;
+              }
+              setAppMode('study');
+              setRightPanel('flashcards');
+            }}
             title={rightPanel === 'study' ? 'Switch to flashcards' : 'Switch to study'}
             style={{
-              borderRadius: 999,
+              borderRadius: 10,
               width: 34,
               height: 34,
               padding: 0,
@@ -640,7 +666,7 @@ export default function App() {
             onClick={() => setIsSettingsOpen((v) => !v)}
             title="Settings"
             style={{
-              borderRadius: 999,
+              borderRadius: 10,
               width: 34,
               height: 34,
               padding: 0,
@@ -650,6 +676,72 @@ export default function App() {
             }}
           >
             <Icon name="settings" />
+          </button>
+
+          <div style={{ height: 1, background: 'var(--color-border)', margin: '2px 4px' }} />
+
+          <button
+            onClick={() => triggerEditorAction('heading')}
+            title="Heading"
+            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
+          >
+            <Icon name="heading" />
+          </button>
+          <button
+            onClick={() => triggerEditorAction('bullet')}
+            title="Bulleted list"
+            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
+          >
+            <Icon name="list" />
+          </button>
+          <button
+            onClick={() => triggerEditorAction('quote')}
+            title="Block quote"
+            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
+          >
+            <Icon name="quote" />
+          </button>
+          <button
+            onClick={() => triggerEditorAction('table')}
+            title="Insert table"
+            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
+          >
+            <Icon name="table" />
+          </button>
+          <button
+            onClick={() => triggerEditorAction('image')}
+            title="Insert image"
+            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
+          >
+            <Icon name="image" />
+          </button>
+          <button
+            onClick={() => triggerEditorAction('code')}
+            title="Insert code block"
+            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
+          >
+            <Icon name="code" />
+          </button>
+          <button
+            onClick={() => triggerEditorAction('flashcard')}
+            title="Insert flashcard block"
+            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
+          >
+            <Icon name="flashcards" />
+          </button>
+          <button
+            onClick={() => triggerEditorAction('indent')}
+            title="Indent"
+            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
+          >
+            <Icon name="indent" />
+          </button>
+          <button
+            onClick={() => triggerEditorAction('outdent')}
+            title="Outdent"
+            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
+          >
+            <Icon name="outdent" />
           </button>
           </div>
         )}
@@ -684,7 +776,6 @@ export default function App() {
                   border: '1px solid rgba(255, 255, 255, 0.18)',
                   background: 'rgba(255,255,255,0.04)',
                   fontSize: 24,
-                  fontFamily: 'Lora, serif',
                   color: 'var(--color-text)'
                 }}
               />

@@ -6,16 +6,16 @@ Desktop-first study notes and flashcard app built with Tauri 2, React, TypeScrip
 
 1. Install dependencies once:
    - `npm install`
-2. Start the fastest feedback loop for UI work:
+2. Start the full desktop app (frontend + Rust backend):
    - `npm run dev`
-3. Start the full desktop app:
-   - `npm run dev:desktop`
+3. Start UI-only development when backend is not needed:
+   - `npm run dev:web`
 
 ## Fast Checks
 
 Use these when you want to test a change without doing a full build from scratch:
 
-- UI only: `npm run dev`
+- UI only: `npm run dev:web`
 - Rust backend only: `npm run check:rust`
 - Full app sanity check: `npm run check:all`
 

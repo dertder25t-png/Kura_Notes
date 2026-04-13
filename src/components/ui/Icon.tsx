@@ -22,7 +22,15 @@ type IconName =
   | 'unpin'
   | 'focus'
   | 'organize'
-  | 'settings';
+  | 'settings'
+  | 'heading'
+  | 'list'
+  | 'quote'
+  | 'code'
+  | 'image'
+  | 'table'
+  | 'indent'
+  | 'outdent';
 
 interface Props {
   name: IconName;
@@ -82,6 +90,22 @@ function IconPath({ name }: { name: IconName }) {
       return <path d="M4 7h16v4H4V7Zm0 6h10v4H4v-4Zm12 0h4v4h-4v-4Z" />;
     case 'settings':
       return <path d="M12 8.25A3.75 3.75 0 1 1 8.25 12 3.75 3.75 0 0 1 12 8.25Zm8.5 3.75-1.9-.62a6.74 6.74 0 0 0-.56-1.34l.95-1.75-1.83-1.83-1.75.95c-.43-.23-.88-.42-1.34-.56L13 3.5h-2l-.62 1.9c-.46.14-.91.33-1.34.56l-1.75-.95L5.46 6.84l.95 1.75c-.23.43-.42.88-.56 1.34L4 12v2l1.9.62c.14.46.33.91.56 1.34l-.95 1.75 1.83 1.83 1.75-.95c.43.23.88.42 1.34.56L11 20.5h2l.62-1.9c.46-.14.91-.33 1.34-.56l1.75.95 1.83-1.83-.95-1.75c.23-.43.42-.88.56-1.34L20.5 14v-2Z" />;
+    case 'heading':
+      return <path d="M5 5v14M11 5v14M5 12h6M15 7h4M17 7v10M15 17h4" />;
+    case 'list':
+      return <path d="M4 7h1M4 12h1M4 17h1M8 7h12M8 12h12M8 17h12" />;
+    case 'quote':
+      return <path d="M6 6v12M11 9h8M11 15h8M8 10l-2 2 2 2" />;
+    case 'code':
+      return <path d="M9 8 5 12l4 4M15 8l4 4-4 4M13 6l-2 12" />;
+    case 'image':
+      return <path d="M4 6h16v12H4V6Zm4 4a1.5 1.5 0 1 0 0-.01ZM5 16l4-4 3 3 2-2 5 3" />;
+    case 'table':
+      return <path d="M4 6h16v12H4V6Zm0 4h16M10 6v12M15 6v12" />;
+    case 'indent':
+      return <path d="M4 7h7M4 12h7M4 17h7M14 12h6M12 9l-3 3 3 3" />;
+    case 'outdent':
+      return <path d="M4 7h7M4 12h7M4 17h7M14 12h6M9 9l3 3-3 3" />;
   }
 }
 
