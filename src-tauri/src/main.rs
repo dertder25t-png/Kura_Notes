@@ -26,6 +26,7 @@ fn main() {
             commands::note_commands::list_notes_by_folder,
             commands::note_commands::move_note_to_folder,
             commands::note_commands::delete_note,
+            commands::note_commands::bootstrap_first_launch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Scholr");

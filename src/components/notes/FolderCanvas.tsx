@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../../utils/invoke';
 import { PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AppMode, CanvasLayoutMode, FolderItem, Note } from '../../types';
 import Icon from '../ui/Icon';
@@ -320,32 +320,7 @@ export default function FolderCanvas({
         </div>
 
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={() => onSetAppMode('focus')}
-            title="Focus"
-            style={{
-              width: 34,
-              height: 34,
-              padding: 0,
-              borderRadius: 10,
-              background: appMode === 'focus' ? 'rgba(111, 126, 168, 0.22)' : 'rgba(255, 255, 255, 0.03)'
-            }}
-          >
-            <Icon name="focus" />
-          </button>
-          <button
-            onClick={() => onSetAppMode('study')}
-            title="Study"
-            style={{
-              width: 34,
-              height: 34,
-              padding: 0,
-              borderRadius: 10,
-              background: appMode === 'study' ? 'rgba(111, 126, 168, 0.22)' : 'rgba(255, 255, 255, 0.03)'
-            }}
-          >
-            <Icon name="study" />
-          </button>
+          
           <button
             onClick={onCycleLayoutMode}
             title={`Layout mode: ${layoutMode}. Click to cycle.`}
@@ -355,19 +330,7 @@ export default function FolderCanvas({
               name={layoutMode === 'grid' ? 'grid' : layoutMode === 'column' ? 'layout-left' : 'move'}
             />
           </button>
-          <button
-            onClick={onToggleSettings}
-            title="Settings"
-            style={{
-              width: 34,
-              height: 34,
-              padding: 0,
-              borderRadius: 10,
-              background: isSettingsOpen ? 'rgba(111, 126, 168, 0.22)' : 'rgba(255, 255, 255, 0.03)'
-            }}
-          >
-            <Icon name="settings" />
-          </button>
+          
           <button onClick={resetLayout} title="Reset layout" style={{ width: 34, height: 34, padding: 0, borderRadius: 10, background: 'rgba(255, 255, 255, 0.03)' }}>
             <Icon name="reset" />
           </button>

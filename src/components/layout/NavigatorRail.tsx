@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../../utils/invoke';
 import { ClassItem, FolderItem, NavPlacement, Note, QuickActionsMode } from '../../types';
 import Icon from '../ui/Icon';
 
@@ -35,9 +35,7 @@ export default function NavigatorRail({
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
-  const [isActionsOpen, setIsActionsOpen] = useState(false);
-  const actionMenuRef = useRef<HTMLDivElement | null>(null);
-
+  
   const selectedClass = activeClassId ?? classes[0]?.id ?? null;
   const selectedFolder = activeFolderId ?? folders[0]?.id ?? null;
 
@@ -92,17 +90,7 @@ export default function NavigatorRail({
     void refreshNotes(selectedClass);
   }, [activeClassId]);
 
-  useEffect(() => {
-    function onPointerDown(event: MouseEvent) {
-      if (!actionMenuRef.current?.contains(event.target as Node)) {
-        setIsActionsOpen(false);
-      }
-    }
-
-    window.addEventListener('mousedown', onPointerDown);
-    return () => window.removeEventListener('mousedown', onPointerDown);
-  }, []);
-
+  
   const notesByFolder = useMemo(() => {
     const grouped = new Map<number, Note[]>();
     for (const folder of folders) {
@@ -158,80 +146,7 @@ export default function NavigatorRail({
           paddingRight: 12
         };
 
-  const actionsMenu = (
-    <div
-      ref={actionMenuRef}
-      style={{
-        position: 'relative',
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: 5,
-        borderRadius: 999,
-        border: '1px solid var(--color-border)',
-        background: 'rgba(18, 19, 22, 0.94)',
-        backdropFilter: 'blur(8px)'
-      }}
-    >
-      <button
-        onClick={() => setIsActionsOpen((v) => !v)}
-        title="Quick actions"
-        style={{
-          width: 34,
-          height: 34,
-          padding: 0,
-          borderRadius: 999,
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-      >
-        <Icon name="plus" />
-      </button>
-      <button
-        onClick={() => setIsActionsOpen((v) => !v)}
-        title="Open menu"
-        style={{
-          width: 30,
-          height: 30,
-          padding: 0,
-          borderRadius: 999,
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-      >
-        <Icon name="chevron-down" size={14} />
-      </button>
-      {isActionsOpen && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 46,
-            left: -2,
-            minWidth: 170,
-            padding: 8,
-            borderRadius: 12,
-            border: '1px solid var(--color-border)',
-            background: 'rgba(16, 17, 20, 0.98)',
-            display: 'grid',
-            gap: 6
-          }}
-        >
-          <button onClick={onCreateNote} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <Icon name="note" size={14} /> New Note
-          </button>
-          <button onClick={onCreateFolder} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <Icon name="folder-plus" size={14} /> New Folder
-          </button>
-          <button onClick={onCreateClass} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <Icon name="plus" size={14} /> New Class
-          </button>
-        </div>
-      )}
-    </div>
-  );
-
+  
   return (
     <aside
       style={{
@@ -244,7 +159,6 @@ export default function NavigatorRail({
         ...rootStyle
       }}
     >
-      {quickActionsMode === 'rail' && actionsMenu}
       {quickActionsMode === 'island' && (
         <button
           onClick={onOpenIsland}

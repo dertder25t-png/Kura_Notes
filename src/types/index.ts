@@ -41,3 +41,38 @@ export interface SaveNoteInput {
   title: string;
   rawContent: string;
 }
+
+export type ToolbarPosition = 'top' | 'left' | 'off';
+
+export type ToolbarToolId =
+  | 'bold'
+  | 'italic'
+  | 'strikethrough'
+  | 'highlight'
+  | 'heading'
+  | 'bullet-dash'
+  | 'bullet-star'
+  | 'numbered'
+  | 'quote'
+  | 'code'
+  | 'smart-colon'
+  | 'divider';
+
+export const ALL_TOOLBAR_TOOL_IDS: ToolbarToolId[] = [
+  'bold', 'italic', 'strikethrough', 'highlight',
+  'heading',
+  'bullet-dash', 'bullet-star', 'numbered', 'quote',
+  'code', 'smart-colon', 'divider',
+];
+
+export interface ToolbarConfig {
+  position: ToolbarPosition;
+  autoHide: boolean;
+  peekEnabled: boolean;
+  peekDurationMs: number;
+  peekFadeInMs: number;
+  peekFadeOutMs: number;
+  hoverShowMs: number;
+  hoverHideMs: number;
+  enabledTools: ToolbarToolId[];
+}

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './utils/invoke';
 import NavigatorRail from './components/layout/NavigatorRail';
+import ToolRail from './components/layout/ToolRail';
 import TabBar, { NoteTab } from './components/layout/TabBar';
 import DualPane from './components/notes/DualPane';
 import FolderCanvas from './components/notes/FolderCanvas';
 import { RightPanel } from './components/tools/toolRegistry';
 import Icon from './components/ui/Icon';
-import { AppMode, CanvasLayoutMode, ClassItem, FolderItem, NavPlacement, Note, QuickActionsMode, TabPlacement } from './types';
+import { AppMode, CanvasLayoutMode, ClassItem, FolderItem, NavPlacement, ToolbarConfig, ToolbarToolId, ALL_TOOLBAR_TOOL_IDS, Note, QuickActionsMode, TabPlacement } from './types';
 
 const TAB_PLACEMENT_KEY = 'kura.tab.placement';
 const APP_MODE_KEY = 'kura.app.mode';
@@ -36,6 +37,39 @@ function loadNavPlacement(): NavPlacement {
   return window.localStorage.getItem(NAV_PLACEMENT_KEY) === 'top' ? 'top' : 'left';
 }
 
+const TOOLBAR_CONFIG_KEY = 'kura.toolbar.config';
+
+function loadToolbarConfig(): ToolbarConfig {
+  try {
+    const raw = window.localStorage.getItem(TOOLBAR_CONFIG_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<ToolbarConfig>;
+      return {
+        position: (['top','left','off'] as const).includes(parsed.position as any) ? parsed.position! : 'top',
+        autoHide: parsed.autoHide ?? true,
+        peekEnabled: parsed.peekEnabled ?? true,
+        peekDurationMs: parsed.peekDurationMs ?? 1500,
+        peekFadeInMs: parsed.peekFadeInMs ?? 200,
+        peekFadeOutMs: parsed.peekFadeOutMs ?? 500,
+        hoverShowMs: parsed.hoverShowMs ?? 150,
+        hoverHideMs: parsed.hoverHideMs ?? 300,
+        enabledTools: Array.isArray(parsed.enabledTools) ? parsed.enabledTools : [...ALL_TOOLBAR_TOOL_IDS],
+      };
+    }
+  } catch { /* ignore */ }
+  return {
+    position: 'top',
+    autoHide: true,
+    peekEnabled: true,
+    peekDurationMs: 1500,
+    peekFadeInMs: 200,
+    peekFadeOutMs: 500,
+    hoverShowMs: 150,
+    hoverHideMs: 300,
+    enabledTools: [...ALL_TOOLBAR_TOOL_IDS],
+  };
+}
+
 function loadCanvasLayoutMode(): CanvasLayoutMode {
   const value = window.localStorage.getItem(CANVAS_LAYOUT_MODE_KEY);
   if (value === 'column' || value === 'free') {
@@ -47,6 +81,7 @@ function loadCanvasLayoutMode(): CanvasLayoutMode {
 function loadQuickActionsMode(): QuickActionsMode {
   return window.localStorage.getItem(QUICK_ACTIONS_MODE_KEY) === 'island' ? 'island' : 'rail';
 }
+
 
 function loadCompactRailEnabled(): boolean {
   return window.localStorage.getItem(COMPACT_RAIL_KEY) === '1';
@@ -65,10 +100,33 @@ export default function App() {
   const [tabPlacement, setTabPlacement] = useState<TabPlacement>(loadTabPlacement);
   const [appMode, setAppMode] = useState<AppMode>(loadAppMode);
   const [navPlacement, setNavPlacement] = useState<NavPlacement>(loadNavPlacement);
+  const [toolbarConfig, setToolbarConfig] = useState<ToolbarConfig>(loadToolbarConfig);
+
   const [canvasLayoutMode, setCanvasLayoutMode] = useState<CanvasLayoutMode>(loadCanvasLayoutMode);
   const [quickActionsMode, setQuickActionsMode] = useState<QuickActionsMode>(loadQuickActionsMode);
   const [compactRailEnabled, setCompactRailEnabled] = useState(loadCompactRailEnabled);
   const [isRailPeekOpen, setIsRailPeekOpen] = useState(false);
+  
+  const [sidebarDelayMs, setSidebarDelayMs] = useState(400);
+  const [animationsEnabled, setAnimationsEnabled] = useState(true);
+  const [hoverLevel, setHoverLevel] = useState(0);
+  const hoverTimer = useRef<number | null>(null);
+
+  function handleRailEnter() {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    if (hoverLevel === 0) setHoverLevel(1);
+    hoverTimer.current = window.setTimeout(() => {
+      setHoverLevel(2);
+    }, sidebarDelayMs);
+  }
+
+  function handleRailLeave() {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = window.setTimeout(() => {
+      setHoverLevel(0);
+      setIsRailPeekOpen(false);
+    }, 150);
+  }
   const [isIslandOpen, setIsIslandOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [islandIntent, setIslandIntent] = useState<'note' | 'folder' | 'tag' | 'note-with-folder'>('note');
@@ -97,6 +155,14 @@ export default function App() {
   }, [navPlacement]);
 
   useEffect(() => {
+    window.localStorage.setItem(TOOLBAR_CONFIG_KEY, JSON.stringify(toolbarConfig));
+  }, [toolbarConfig]);
+
+  function updateToolbar<K extends keyof ToolbarConfig>(key: K, value: ToolbarConfig[K]) {
+    setToolbarConfig((prev) => ({ ...prev, [key]: value }));
+  }
+
+  useEffect(() => {
     window.localStorage.setItem(CANVAS_LAYOUT_MODE_KEY, canvasLayoutMode);
   }, [canvasLayoutMode]);
 
@@ -115,7 +181,14 @@ export default function App() {
   }, [quickActionsMode]);
 
   useEffect(() => {
-    invoke<ClassItem[]>('list_classes')
+    invoke<{ alreadyDone: boolean; noteId: number | null }>('bootstrap_first_launch')
+      .catch(() => ({ alreadyDone: true, noteId: null }))
+      .then((res) => {
+        if (!res.alreadyDone && res.noteId) {
+          window.localStorage.setItem(LAST_OPEN_NOTE_KEY, String(res.noteId));
+        }
+        return invoke<ClassItem[]>('list_classes');
+      })
       .then((items) => {
         setTags(items);
         if (!activeClassId && items.length > 0 && islandTagId === null) {
@@ -431,11 +504,13 @@ export default function App() {
           />
         )}
         <div style={{ flex: 1, minHeight: 0 }}>
-          <DualPane
+        <DualPane
             noteId={activeTab?.noteId ?? null}
             classId={activeClassId}
             rightPanel={rightPanel}
             mode={appMode}
+            toolbarConfig={toolbarConfig}
+            onToolbarEnabledToolsChange={(tools) => updateToolbar('enabledTools', tools)}
           />
         </div>
       </div>
@@ -451,11 +526,13 @@ export default function App() {
           />
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <DualPane
+        <DualPane
             noteId={activeTab?.noteId ?? null}
             classId={activeClassId}
             rightPanel={rightPanel}
             mode={appMode}
+            toolbarConfig={toolbarConfig}
+            onToolbarEnabledToolsChange={(tools) => updateToolbar('enabledTools', tools)}
           />
         </div>
       </div>
@@ -508,243 +585,77 @@ export default function App() {
 
   return (
     <div style={shellStyle}>
-      {navPlacement === 'left' && isCompactRailActive && (
-        <div
-          onMouseEnter={() => setIsRailPeekOpen(true)}
-          style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 10, zIndex: 30 }}
-        />
-      )}
-      {navPlacement === 'left' ? (
-        <div
-          style={railWrapperStyle}
-          onMouseEnter={() => {
-            if (isCompactRailActive) {
-              setIsRailPeekOpen(true);
-            }
-          }}
-          onMouseLeave={() => {
-            if (isCompactRailActive) {
-              setIsRailPeekOpen(false);
-            }
+      {navPlacement === 'left' && (
+        <div 
+          onMouseEnter={handleRailEnter}
+          onMouseLeave={handleRailLeave}
+          style={{ 
+            display: 'flex', 
+            flexDirection: 'row',
+            height: '100%', 
+            position: appMode === 'focus' ? 'absolute' : 'relative',
+            left: appMode === 'focus' && hoverLevel === 0 ? (isRailPeekOpen ? 0 : -56) : 0,
+            zIndex: 40,
+            background: 'var(--color-bg)',
+            transition: animationsEnabled ? 'left 250ms cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
           }}
         >
-          <NavigatorRail
-            placement={navPlacement}
-            quickActionsMode={quickActionsMode}
-            activeClassId={activeClassId}
-            activeFolderId={activeFolderId}
-            activeNoteId={activeNoteId}
-            onSelectClass={setActiveClassId}
-            onOpenIsland={() => setIsIslandOpen(true)}
-            onCreateClass={handleCreateClass}
-            onCreateFolder={handleCreateFolder}
-            onCreateNote={handleCreateNote}
-            onSelectFolder={(folderId) => {
-              setActiveFolderId(folderId);
-              setActiveNoteId(null);
-              setActiveTabId(null);
-            }}
-            onOpenNote={handleOpenNote}
-          />
-        </div>
-      ) : (
-        <NavigatorRail
-          placement={navPlacement}
-          quickActionsMode={quickActionsMode}
-          activeClassId={activeClassId}
-          activeFolderId={activeFolderId}
-          activeNoteId={activeNoteId}
-          onSelectClass={setActiveClassId}
-          onOpenIsland={() => setIsIslandOpen(true)}
-          onCreateClass={handleCreateClass}
-          onCreateFolder={handleCreateFolder}
-          onCreateNote={handleCreateNote}
-          onSelectFolder={(folderId) => {
-            setActiveFolderId(folderId);
-            setActiveNoteId(null);
-            setActiveTabId(null);
-          }}
-          onOpenNote={handleOpenNote}
-        />
-      )}
-      <main style={{ flex: 1, background: 'var(--color-panel)', position: 'relative' }}>
-        {appMode !== 'organize' && (
+          {appMode === 'focus' && hoverLevel === 0 && (
+            <div
+              onMouseEnter={() => setIsRailPeekOpen(true)}
+              style={{ position: 'absolute', left: 56, top: 0, bottom: 0, width: 20, zIndex: 50, cursor: 'w-resize' }}
+            />
+          )}
+
+          {/* Slim Vertical ToolRail */}
+          <div style={{ width: 56, height: '100%' }}>
+            <ToolRail
+              appMode={appMode}
+              onSetAppMode={setAppMode}
+              isSettingsOpen={isSettingsOpen}
+              onToggleSettings={() => setIsSettingsOpen(v => !v)}
+              onCreateNote={handleCreateNote}
+              onCreateFolder={handleCreateFolder}
+              onCreateClass={handleCreateClass}
+            />
+          </div>
+
+          {/* Expandable Content Sidebar */}
           <div
             style={{
-              position: 'absolute',
-              top: '50%',
-              left: 'var(--spacing-md)',
-              transform: 'translateY(-50%)',
-              zIndex: 20,
-              display: 'grid',
-              gap: 8,
-              padding: 8,
-              borderRadius: 16,
-              border: '1px solid var(--color-border)',
-              background: 'rgba(19, 20, 23, 0.92)',
-              backdropFilter: 'blur(6px)'
+              width: appMode === 'organize' || appMode === 'study' || hoverLevel === 2 ? 260 : 0,
+              overflow: 'hidden',
+              background: 'linear-gradient(180deg, #121316 0%, #101114 100%)',
+              borderRight: appMode === 'organize' || appMode === 'study' || hoverLevel === 2 ? '1px solid var(--color-border)' : 'none',
+              height: '100%',
+              display: 'flex',
+              transition: animationsEnabled ? 'width 250ms cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
             }}
           >
-          <button
-            onClick={() => {
-              flushEditorNow();
-              setAppMode('focus');
-            }}
-            title="Focus"
-            style={{
-              borderRadius: 10,
-              width: 34,
-              height: 34,
-              padding: 0,
-              background: appMode === 'focus' ? 'rgba(111, 126, 168, 0.22)' : 'rgba(255, 255, 255, 0.03)',
-              color: 'var(--color-text)',
-              borderColor: appMode === 'focus' ? 'rgba(111, 126, 168, 0.4)' : 'var(--color-border)'
-            }}
-          >
-            <Icon name="focus" />
-          </button>
-          <button
-            onClick={() => {
-              flushEditorNow();
-              setAppMode('study');
-            }}
-            title="Study"
-            style={{
-              borderRadius: 10,
-              width: 34,
-              height: 34,
-              padding: 0,
-              background: appMode === 'study' ? 'rgba(111, 126, 168, 0.22)' : 'rgba(255, 255, 255, 0.03)',
-              color: 'var(--color-text)',
-              borderColor: appMode === 'study' ? 'rgba(111, 126, 168, 0.4)' : 'var(--color-border)'
-            }}
-          >
-            <Icon name="study" />
-          </button>
-          <button
-            onClick={() => {
-              flushEditorNow();
-              setAppMode('organize');
-            }}
-            title="Organize"
-            style={{
-              borderRadius: 10,
-              width: 34,
-              height: 34,
-              padding: 0,
-              background: 'rgba(255, 255, 255, 0.03)',
-              color: 'var(--color-text)',
-              borderColor: 'var(--color-border)'
-            }}
-          >
-            <Icon name="organize" />
-          </button>
-          <button
-            onClick={() => {
-              flushEditorNow();
-              if (rightPanel === 'flashcards') {
-                setRightPanel('study');
-                return;
-              }
-              setAppMode('study');
-              setRightPanel('flashcards');
-            }}
-            title={rightPanel === 'study' ? 'Switch to flashcards' : 'Switch to study'}
-            style={{
-              borderRadius: 10,
-              width: 34,
-              height: 34,
-              padding: 0,
-              background: 'rgba(255, 255, 255, 0.03)',
-              color: 'var(--color-text)',
-              borderColor: 'var(--color-border)'
-            }}
-          >
-            <Icon name={rightPanel === 'study' ? 'study' : 'flashcards'} />
-          </button>
-          <button
-            onClick={() => setIsSettingsOpen((v) => !v)}
-            title="Settings"
-            style={{
-              borderRadius: 10,
-              width: 34,
-              height: 34,
-              padding: 0,
-              background: isSettingsOpen ? 'rgba(111, 126, 168, 0.22)' : 'rgba(255, 255, 255, 0.03)',
-              color: 'var(--color-text)',
-              borderColor: isSettingsOpen ? 'rgba(111, 126, 168, 0.4)' : 'var(--color-border)'
-            }}
-          >
-            <Icon name="settings" />
-          </button>
-
-          <div style={{ height: 1, background: 'var(--color-border)', margin: '2px 4px' }} />
-
-          <button
-            onClick={() => triggerEditorAction('heading')}
-            title="Heading"
-            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
-          >
-            <Icon name="heading" />
-          </button>
-          <button
-            onClick={() => triggerEditorAction('bullet')}
-            title="Bulleted list"
-            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
-          >
-            <Icon name="list" />
-          </button>
-          <button
-            onClick={() => triggerEditorAction('quote')}
-            title="Block quote"
-            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
-          >
-            <Icon name="quote" />
-          </button>
-          <button
-            onClick={() => triggerEditorAction('table')}
-            title="Insert table"
-            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
-          >
-            <Icon name="table" />
-          </button>
-          <button
-            onClick={() => triggerEditorAction('image')}
-            title="Insert image"
-            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
-          >
-            <Icon name="image" />
-          </button>
-          <button
-            onClick={() => triggerEditorAction('code')}
-            title="Insert code block"
-            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
-          >
-            <Icon name="code" />
-          </button>
-          <button
-            onClick={() => triggerEditorAction('flashcard')}
-            title="Insert flashcard block"
-            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
-          >
-            <Icon name="flashcards" />
-          </button>
-          <button
-            onClick={() => triggerEditorAction('indent')}
-            title="Indent"
-            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
-          >
-            <Icon name="indent" />
-          </button>
-          <button
-            onClick={() => triggerEditorAction('outdent')}
-            title="Outdent"
-            style={{ borderRadius: 10, width: 34, height: 34, padding: 0, background: 'rgba(255, 255, 255, 0.03)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
-          >
-            <Icon name="outdent" />
-          </button>
+            <div style={{ width: 260, minWidth: 260, height: '100%' }}>
+              <NavigatorRail
+                placement={navPlacement}
+                quickActionsMode={quickActionsMode}
+                activeClassId={activeClassId}
+                activeFolderId={activeFolderId}
+                activeNoteId={activeNoteId}
+                onSelectClass={setActiveClassId}
+                onOpenIsland={() => setIsIslandOpen(true)}
+                onCreateClass={handleCreateClass}
+                onCreateFolder={handleCreateFolder}
+                onCreateNote={handleCreateNote}
+                onSelectFolder={(folderId) => {
+                  setActiveFolderId(folderId);
+                  setActiveNoteId(null);
+                  setActiveTabId(null);
+                }}
+                onOpenNote={handleOpenNote}
+              />
+            </div>
           </div>
-        )}
+        </div>
+      )}
+      <main style={{ flex: 1, background: 'var(--color-panel)', position: 'relative' }}>
         {quickActionsMode === 'island' && isIslandOpen && (
           <div
             style={{
@@ -981,127 +892,440 @@ export default function App() {
           </div>
         )}
         {isSettingsOpen && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 'calc(var(--spacing-md) + 48px)',
-              right: 'var(--spacing-lg)',
-              zIndex: 21,
-              width: 230,
-              padding: 10,
-              borderRadius: 12,
-              border: '1px solid var(--color-border)',
-              background: 'rgba(18, 19, 22, 0.96)',
-              display: 'grid',
-              gap: 8
-            }}
-          >
-            <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>Navigation</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={() => setNavPlacement('left')}
-                style={{
-                  flex: 1,
-                  display: 'inline-flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: navPlacement === 'left' ? 'rgba(111, 126, 168, 0.2)' : 'rgba(255, 255, 255, 0.03)'
-                }}
-              >
-                <Icon name="layout-left" size={14} /> Zen
-              </button>
-              <button
-                onClick={() => setNavPlacement('top')}
-                style={{
-                  flex: 1,
-                  display: 'inline-flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: navPlacement === 'top' ? 'rgba(111, 126, 168, 0.2)' : 'rgba(255, 255, 255, 0.03)'
-                }}
-              >
-                <Icon name="layout-top" size={14} /> Chrome
-              </button>
-            </div>
-            <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>Tabs</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={() => setTabPlacement('top')}
-                style={{
-                  flex: 1,
-                  display: 'inline-flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: tabPlacement === 'top' ? 'rgba(111, 126, 168, 0.2)' : 'rgba(255, 255, 255, 0.03)'
-                }}
-              >
-                <Icon name="layout-top" size={14} /> Top
-              </button>
-              <button
-                onClick={() => setTabPlacement('left')}
-                style={{
-                  flex: 1,
-                  display: 'inline-flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: tabPlacement === 'left' ? 'rgba(111, 126, 168, 0.2)' : 'rgba(255, 255, 255, 0.03)'
-                }}
-              >
-                <Icon name="layout-left" size={14} /> Left
-              </button>
-            </div>
-            <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>Quick Actions</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={() => setQuickActionsMode('rail')}
-                style={{
-                  flex: 1,
-                  display: 'inline-flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: quickActionsMode === 'rail' ? 'rgba(111, 126, 168, 0.2)' : 'rgba(255, 255, 255, 0.03)'
-                }}
-              >
-                <Icon name="layout-left" size={14} /> Rail
-              </button>
-              <button
-                onClick={() => setQuickActionsMode('island')}
-                style={{
-                  flex: 1,
-                  display: 'inline-flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: quickActionsMode === 'island' ? 'rgba(111, 126, 168, 0.2)' : 'rgba(255, 255, 255, 0.03)'
-                }}
-              >
-                <Icon name="focus" size={14} /> Island
-              </button>
-            </div>
-            <button
-              onClick={() => setCompactRailEnabled((v) => !v)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 8,
-                background: compactRailEnabled ? 'rgba(111, 126, 168, 0.2)' : 'rgba(255, 255, 255, 0.03)'
-              }}
-            >
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <Icon name="chevron-left" size={14} /> Compact Rail
-              </span>
-              <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{compactRailEnabled ? 'On' : 'Off'}</span>
-            </button>
-          </div>
+          <SettingsModal
+            onClose={() => setIsSettingsOpen(false)}
+            navPlacement={navPlacement}
+            onNavPlacement={setNavPlacement}
+            animationsEnabled={animationsEnabled}
+            onAnimationsEnabled={setAnimationsEnabled}
+            sidebarDelayMs={sidebarDelayMs}
+            onSidebarDelayMs={setSidebarDelayMs}
+            tabPlacement={tabPlacement}
+            onTabPlacement={setTabPlacement}
+            quickActionsMode={quickActionsMode}
+            onQuickActionsMode={setQuickActionsMode}
+            compactRailEnabled={compactRailEnabled}
+            onCompactRailEnabled={setCompactRailEnabled}
+            toolbarConfig={toolbarConfig}
+            onUpdateToolbar={updateToolbar}
+          />
         )}
         {workspace}
       </main>
     </div>
   );
 }
+
+// ─── SettingsModal ────────────────────────────────────────────────────────────
+
+type SettingsSection = 'layout' | 'sidebar' | 'tabs' | 'toolbar';
+
+interface SettingsModalProps {
+  onClose: () => void;
+  navPlacement: NavPlacement;
+  onNavPlacement: (v: NavPlacement) => void;
+  animationsEnabled: boolean;
+  onAnimationsEnabled: (v: boolean) => void;
+  sidebarDelayMs: number;
+  onSidebarDelayMs: (v: number) => void;
+  tabPlacement: TabPlacement;
+  onTabPlacement: (v: TabPlacement) => void;
+  quickActionsMode: QuickActionsMode;
+  onQuickActionsMode: (v: QuickActionsMode) => void;
+  compactRailEnabled: boolean;
+  onCompactRailEnabled: (v: boolean) => void;
+  toolbarConfig: ToolbarConfig;
+  onUpdateToolbar: <K extends keyof ToolbarConfig>(key: K, value: ToolbarConfig[K]) => void;
+}
+
+const SECTION_LABELS: Record<SettingsSection, string> = {
+  layout: 'Layout',
+  sidebar: 'Sidebar',
+  tabs: 'Tabs & Actions',
+  toolbar: 'Formatting Toolbar',
+};
+
+const SECTION_ICONS: Record<SettingsSection, string> = {
+  layout: '⊞',
+  sidebar: '▎',
+  tabs: '⊟',
+  toolbar: '✦',
+};
+
+function SettingsModal({
+  onClose, navPlacement, onNavPlacement,
+  animationsEnabled, onAnimationsEnabled,
+  sidebarDelayMs, onSidebarDelayMs,
+  tabPlacement, onTabPlacement,
+  quickActionsMode, onQuickActionsMode,
+  compactRailEnabled, onCompactRailEnabled,
+  toolbarConfig, onUpdateToolbar,
+}: SettingsModalProps) {
+  const [section, setSection] = useState<SettingsSection>('layout');
+
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 60,
+        background: 'rgba(0,0,0,0.55)',
+        backdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        style={{
+          width: 'min(860px, calc(100vw - 48px))',
+          height: 'min(600px, calc(100vh - 80px))',
+          borderRadius: 18,
+          border: '1px solid rgba(255,255,255,0.1)',
+          background: 'linear-gradient(145deg, #141518 0%, #111214 100%)',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.05) inset',
+          display: 'flex',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Left nav */}
+        <div style={{
+          width: 200,
+          borderRight: '1px solid rgba(255,255,255,0.07)',
+          padding: '24px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          background: 'rgba(255,255,255,0.015)',
+          flexShrink: 0,
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', padding: '0 10px', marginBottom: 10 }}>
+            Settings
+          </div>
+          {(Object.keys(SECTION_LABELS) as SettingsSection[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => setSection(s)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '9px 10px', borderRadius: 9, border: 'none',
+                background: section === s ? 'rgba(111,126,168,0.18)' : 'transparent',
+                color: section === s ? 'var(--color-text)' : 'var(--color-text-muted)',
+                cursor: 'pointer', textAlign: 'left', fontSize: 13, fontWeight: section === s ? 500 : 400,
+                transition: 'background 120ms, color 120ms',
+              }}
+            >
+              <span style={{ fontSize: 15, width: 20, textAlign: 'center', opacity: 0.8 }}>{SECTION_ICONS[s]}</span>
+              {SECTION_LABELS[s]}
+            </button>
+          ))}
+
+          {/* Close button at bottom */}
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={onClose}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '9px 10px', borderRadius: 9, border: 'none',
+              background: 'transparent',
+              color: 'var(--color-text-muted)',
+              cursor: 'pointer', textAlign: 'left', fontSize: 13,
+              transition: 'background 120ms',
+            }}
+          >
+            <span style={{ fontSize: 15, width: 20, textAlign: 'center' }}>✕</span>
+            Close
+          </button>
+        </div>
+
+        {/* Content pane */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '32px 36px' }}>
+
+          {/* ── LAYOUT ─────────────────────────────────────────────────── */}
+          {section === 'layout' && (
+            <div style={{ display: 'grid', gap: 28 }}>
+              <SettingGroup title="Navigation style" description="Choose where the main navigation rail sits.">
+                <SegmentedControl
+                  options={[
+                    { value: 'left', label: 'Zen', icon: '▎' },
+                    { value: 'top', label: 'Chrome', icon: '▬' },
+                  ]}
+                  value={navPlacement}
+                  onChange={onNavPlacement}
+                />
+              </SettingGroup>
+            </div>
+          )}
+
+          {/* ── SIDEBAR ────────────────────────────────────────────────── */}
+          {section === 'sidebar' && (
+            <div style={{ display: 'grid', gap: 28 }}>
+              <SettingGroup title="Animations" description="Enable or disable motion effects throughout the sidebar.">
+                <ToggleRow
+                  label="Enable animations"
+                  checked={animationsEnabled}
+                  onChange={onAnimationsEnabled}
+                />
+              </SettingGroup>
+
+              <SettingGroup title="Hover delay" description="How long you need to hover before the sidebar expands.">
+                <SliderRow
+                  label="Delay"
+                  value={sidebarDelayMs}
+                  min={0} max={1000} step={50}
+                  unit="ms"
+                  onChange={onSidebarDelayMs}
+                />
+              </SettingGroup>
+
+              <SettingGroup title="Compact rail" description="When in Zen mode, collapse the rail so only icons show until hovered.">
+                <ToggleRow
+                  label="Compact rail"
+                  checked={compactRailEnabled}
+                  onChange={onCompactRailEnabled}
+                />
+              </SettingGroup>
+            </div>
+          )}
+
+          {/* ── TABS ───────────────────────────────────────────────────── */}
+          {section === 'tabs' && (
+            <div style={{ display: 'grid', gap: 28 }}>
+              <SettingGroup title="Tab bar position" description="Where note tabs appear when multiple notes are open in Study mode.">
+                <SegmentedControl
+                  options={[
+                    { value: 'top', label: 'Top', icon: '▬' },
+                    { value: 'left', label: 'Left', icon: '▎' },
+                  ]}
+                  value={tabPlacement}
+                  onChange={onTabPlacement}
+                />
+              </SettingGroup>
+
+              <SettingGroup title="Quick actions" description="Choose how the note/folder/tag creation shortcut works.">
+                <SegmentedControl
+                  options={[
+                    { value: 'rail', label: 'Rail buttons', icon: '▎' },
+                    { value: 'island', label: 'Island modal', icon: '◈' },
+                  ]}
+                  value={quickActionsMode}
+                  onChange={onQuickActionsMode}
+                />
+              </SettingGroup>
+            </div>
+          )}
+
+          {/* ── TOOLBAR ────────────────────────────────────────────────── */}
+          {section === 'toolbar' && (
+            <div style={{ display: 'grid', gap: 28 }}>
+              <SettingGroup title="Toolbar position" description="Where the formatting toolbar appears in the editor.">
+                <SegmentedControl
+                  options={[
+                    { value: 'top', label: 'Top', icon: '▬' },
+                    { value: 'left', label: 'Left', icon: '▎' },
+                    { value: 'off', label: 'Hidden', icon: '✕' },
+                  ]}
+                  value={toolbarConfig.position}
+                  onChange={(v) => onUpdateToolbar('position', v as ToolbarConfig['position'])}
+                />
+              </SettingGroup>
+
+              {toolbarConfig.position !== 'off' && (
+                <>
+                  <SettingGroup title="Auto-hide" description="Toolbar hides while you type and reappears on hover or when idle.">
+                    <ToggleRow
+                      label="Enable auto-hide"
+                      checked={toolbarConfig.autoHide}
+                      onChange={(v) => onUpdateToolbar('autoHide', v)}
+                    />
+                  </SettingGroup>
+
+                  {toolbarConfig.autoHide && (
+                    <>
+                      <SettingGroup title="Peek after typing" description="When you stop typing, the toolbar briefly appears before hiding again. Disable to only show on hover.">
+                        <ToggleRow
+                          label="Enable peek"
+                          checked={toolbarConfig.peekEnabled}
+                          onChange={(v) => onUpdateToolbar('peekEnabled', v)}
+                        />
+                        {toolbarConfig.peekEnabled && (
+                          <div style={{ marginTop: 12 }}>
+                            <SliderRow label="Hold for" value={toolbarConfig.peekDurationMs} min={300} max={5000} step={100} unit="ms" onChange={(v) => onUpdateToolbar('peekDurationMs', v)} />
+                          </div>
+                        )}
+                      </SettingGroup>
+
+                      <SettingGroup title="Peek animation" description="Control how fast the toolbar fades in and out during the peek.">
+                        <div style={{ display: 'grid', gap: 16 }}>
+                          <SliderRow label="Fade in" value={toolbarConfig.peekFadeInMs} min={0} max={800} step={25} unit="ms" onChange={(v) => onUpdateToolbar('peekFadeInMs', v)} />
+                          <SliderRow label="Fade out" value={toolbarConfig.peekFadeOutMs} min={0} max={1000} step={25} unit="ms" onChange={(v) => onUpdateToolbar('peekFadeOutMs', v)} />
+                        </div>
+                      </SettingGroup>
+
+                      <SettingGroup title="Hover animation" description="How fast the toolbar appears and disappears when you hover the toolbar zone.">
+                        <div style={{ display: 'grid', gap: 16 }}>
+                          <SliderRow label="Show speed" value={toolbarConfig.hoverShowMs} min={0} max={600} step={25} unit="ms" onChange={(v) => onUpdateToolbar('hoverShowMs', v)} />
+                          <SliderRow label="Hide speed" value={toolbarConfig.hoverHideMs} min={0} max={600} step={25} unit="ms" onChange={(v) => onUpdateToolbar('hoverHideMs', v)} />
+                        </div>
+                      </SettingGroup>
+                    </>
+                  )}
+
+                  <SettingGroup title="Visible tools" description="Toggle which tools appear in the toolbar. Use the ⊙ button in the toolbar itself for quick access.">
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                      {ALL_TOOLBAR_TOOL_IDS.map((id) => {
+                        const isOn = toolbarConfig.enabledTools.includes(id);
+                        return (
+                          <button
+                            key={id}
+                            onClick={() =>
+                              onUpdateToolbar(
+                                'enabledTools',
+                                isOn
+                                  ? toolbarConfig.enabledTools.filter((t) => t !== id)
+                                  : [...toolbarConfig.enabledTools, id]
+                              )
+                            }
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              padding: '8px 12px', borderRadius: 9, border: '1px solid',
+                              borderColor: isOn ? 'rgba(111,126,168,0.3)' : 'rgba(255,255,255,0.06)',
+                              background: isOn ? 'rgba(111,126,168,0.1)' : 'rgba(255,255,255,0.02)',
+                              color: isOn ? 'var(--color-text)' : 'var(--color-text-muted)',
+                              cursor: 'pointer', textAlign: 'left', fontSize: 13,
+                              transition: 'all 150ms',
+                            }}
+                          >
+                            {TOOL_LABELS[id]}
+                            <span style={{
+                              width: 28, height: 15, borderRadius: 999, position: 'relative', flexShrink: 0,
+                              background: isOn ? 'var(--color-accent)' : 'rgba(255,255,255,0.12)',
+                              transition: 'background 150ms', display: 'inline-block',
+                            }}>
+                              <span style={{
+                                position: 'absolute', top: 2, left: isOn ? 15 : 2,
+                                width: 11, height: 11, borderRadius: '50%', background: '#fff',
+                                transition: 'left 150ms',
+                              }} />
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </SettingGroup>
+                </>
+              )}
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Settings sub-components ──────────────────────────────────────────────────
+
+function SettingGroup({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text)', marginBottom: 3 }}>{title}</div>
+        {description && <div style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>{description}</div>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SegmentedControl<T extends string>({
+  options, value, onChange,
+}: { options: { value: T; label: string; icon?: string }[]; value: T; onChange: (v: T) => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 6 }}>
+      {options.map((opt) => {
+        const active = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+              height: 38, borderRadius: 10,
+              border: `1px solid ${active ? 'rgba(111,126,168,0.4)' : 'rgba(255,255,255,0.07)'}`,
+              background: active ? 'rgba(111,126,168,0.18)' : 'rgba(255,255,255,0.03)',
+              color: active ? 'var(--color-accent-bright)' : 'var(--color-text-muted)',
+              cursor: 'pointer', fontSize: 13, fontWeight: active ? 500 : 400,
+              transition: 'all 140ms',
+            }}
+          >
+            {opt.icon && <span style={{ fontSize: 13, opacity: 0.8 }}>{opt.icon}</span>}
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div
+      onClick={() => onChange(!checked)}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
+        border: '1px solid rgba(255,255,255,0.07)',
+        background: checked ? 'rgba(111,126,168,0.07)' : 'rgba(255,255,255,0.02)',
+        transition: 'background 150ms',
+      }}
+    >
+      <span style={{ fontSize: 13, color: 'var(--color-text)' }}>{label}</span>
+      <span style={{
+        width: 36, height: 20, borderRadius: 999, position: 'relative', flexShrink: 0,
+        background: checked ? 'var(--color-accent)' : 'rgba(255,255,255,0.15)',
+        transition: 'background 200ms', display: 'inline-block',
+      }}>
+        <span style={{
+          position: 'absolute', top: 3, left: checked ? 19 : 3,
+          width: 14, height: 14, borderRadius: '50%', background: '#fff',
+          transition: 'left 200ms',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+        }} />
+      </span>
+    </div>
+  );
+}
+
+function SliderRow({
+  label, value, min, max, step, unit, onChange
+}: { label: string; value: number; min: number; max: number; step: number; unit: string; onChange: (v: number) => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ fontSize: 13, color: 'var(--color-text)' }}>{label}</span>
+        <span style={{ fontSize: 12, color: 'var(--color-accent)', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{value}{unit}</span>
+      </div>
+      <input
+        type="range" min={min} max={max} step={step} value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ width: '100%', accentColor: 'var(--color-accent)', height: 4 }}
+      />
+    </div>
+  );
+}
+
+const TOOL_LABELS: Record<ToolbarToolId, string> = {
+
+  'bold': 'Bold',
+  'italic': 'Italic',
+  'strikethrough': 'Strikethrough',
+  'highlight': 'Highlight',
+  'heading': 'Heading (H1)',
+  'bullet-dash': 'Bullet List  (— dash)',
+  'bullet-star': 'Bullet List  (✦ star)',
+  'numbered': 'Numbered List',
+  'quote': 'Quote Block',
+  'code': 'Code Block',
+  'smart-colon': 'Flashcard  (⬡ ::)',
+  'divider': 'Divider',
+};

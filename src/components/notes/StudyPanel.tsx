@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../../utils/invoke';
 import ReactMarkdown from 'react-markdown';
 import { Note } from '../../types';
 

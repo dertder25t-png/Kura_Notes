@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../../utils/invoke';
 import { useDebounce } from '../../hooks/useDebounce';
-import { Note } from '../../types';
+import { useProgressiveReveal } from '../../hooks/useProgressiveReveal';
+import { Note, ToolbarConfig, ToolbarToolId, ALL_TOOLBAR_TOOL_IDS } from '../../types';
+import SelectionToolbar from './SelectionToolbar';
+import FormattingToolbar from './FormattingToolbar';
+import WikilinkPopover from './WikilinkPopover';
+
+function getPlaceholderHint(length: number): string {
+  if (length === 0) return 'Start writing, or type / for commands...';
+  if (length < 50) return 'Keep going — highlight text to create a flashcard...';
+  if (length < 200) return 'Try typing :: after any term or date to make a card...';
+  return '';
+}
 
 type SlashCommand = {
   id: 'table' | 'image' | 'code' | 'flashcard';
@@ -9,16 +20,26 @@ type SlashCommand = {
   snippet: string;
 };
 
-type EditorAction =
+export type EditorAction =
   | 'heading'
   | 'bullet'
+  | 'bullet-star'
+  | 'numbered'
   | 'quote'
   | 'table'
   | 'image'
   | 'code'
   | 'flashcard'
+  | 'smart-colon'
   | 'indent'
-  | 'outdent';
+  | 'outdent'
+  | 'bold'
+  | 'italic'
+  | 'strikethrough'
+  | 'highlight'
+  | 'divider'
+  | 'bullet-dash'
+  | 'layout-top';
 
 const SLASH_COMMANDS: SlashCommand[] = [
   {
@@ -46,27 +67,40 @@ const SLASH_COMMANDS: SlashCommand[] = [
 interface Props {
   noteId: number | null;
   classId: number | null;
+  toolbarConfig?: ToolbarConfig;
+  onToolbarEnabledToolsChange?: (tools: ToolbarToolId[]) => void;
 }
 
-export default function NoteEditor({ noteId, classId }: Props) {
+export default function NoteEditor({ noteId, classId, toolbarConfig, onToolbarEnabledToolsChange }: Props) {
+  const typingTimer = useRef<number | null>(null);
+
   const [note, setNote] = useState<Note | null>(null);
   const [text, setText] = useState('');
   const [title, setTitle] = useState('');
   const [status, setStatus] = useState('');
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
+  
+  // Phase 2 states
+  const [selectionPos, setSelectionPos] = useState<{ x: number; y: number } | null>(null);
+  const [selectedText, setSelectedText] = useState('');
+  
+  const [showWikilinks, setShowWikilinks] = useState(false);
+  const [wikilinkQuery, setWikilinkQuery] = useState('');
+  const [wikilinkIndex, setWikilinkIndex] = useState(0);
+  const [wikilinkPos, setWikilinkPos] = useState<{ x: number; y: number } | null>(null);
+  const [wikilinkCount, setWikilinkCount] = useState(0);
+
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const ghostRef = useRef<HTMLDivElement | null>(null);
+  
   const debouncedText = useDebounce(text, 3000);
   const debouncedTitle = useDebounce(title, 3000);
+  const { bump } = useProgressiveReveal();
 
   const flushSave = () => {
-    if (!note) {
-      return;
-    }
-
-    if (text === note.rawContent && title === note.title) {
-      return;
-    }
+    if (!note) return;
+    if (text === note.rawContent && title === note.title) return;
 
     setStatus('Saving...');
     invoke<Note>('save_note', {
@@ -79,6 +113,7 @@ export default function NoteEditor({ noteId, classId }: Props) {
       .then((saved) => {
         setNote(saved);
         setStatus('Saved');
+        bump('notesSaved');
         window.setTimeout(() => setStatus(''), 1200);
       })
       .catch(() => setStatus('Save failed'));
@@ -126,15 +161,9 @@ export default function NoteEditor({ noteId, classId }: Props) {
 
       const nextLines = outdent
         ? lines.map((line) => {
-            if (line.startsWith('  ')) {
-              return line.slice(2);
-            }
-            if (line.startsWith('\t')) {
-              return line.slice(1);
-            }
-            if (line.startsWith(' ')) {
-              return line.slice(1);
-            }
+            if (line.startsWith('  ')) return line.slice(2);
+            if (line.startsWith('\t')) return line.slice(1);
+            if (line.startsWith(' ')) return line.slice(1);
             return line;
           })
         : lines.map((line) => `  ${line}`);
@@ -147,15 +176,11 @@ export default function NoteEditor({ noteId, classId }: Props) {
 
     const { lineStart, line } = getCurrentLine(value, selectionStart);
     const listMatch = line.match(/^(\s*)((?:[-*])|(?:\d+\.))\s(.*)$/);
-    if (!listMatch) {
-      return false;
-    }
+    if (!listMatch) return false;
 
     if (outdent) {
       const indentToRemove = Math.min(2, listMatch[1].length);
-      if (indentToRemove === 0) {
-        return false;
-      }
+      if (indentToRemove === 0) return false;
       const nextValue = value.slice(0, lineStart) + line.slice(indentToRemove) + value.slice(lineStart + line.length);
       updateTextWithSelection(nextValue, selectionStart - indentToRemove);
       return true;
@@ -196,9 +221,7 @@ export default function NoteEditor({ noteId, classId }: Props) {
 
   const insertSnippet = (snippet: string) => {
     const textarea = textareaRef.current;
-    if (!textarea) {
-      return;
-    }
+    if (!textarea) return;
     const { selectionStart, selectionEnd, value } = textarea;
     const nextValue = value.slice(0, selectionStart) + snippet + value.slice(selectionEnd);
     updateTextWithSelection(nextValue, selectionStart + snippet.length);
@@ -206,9 +229,7 @@ export default function NoteEditor({ noteId, classId }: Props) {
 
   const applySlashCommand = (command: SlashCommand) => {
     const textarea = textareaRef.current;
-    if (!textarea) {
-      return;
-    }
+    if (!textarea) return;
 
     const { selectionStart, selectionEnd, value } = textarea;
     const nextValue = value.slice(0, selectionStart) + command.snippet + value.slice(selectionEnd);
@@ -240,16 +261,12 @@ export default function NoteEditor({ noteId, classId }: Props) {
   }, [noteId]);
 
   const isDirty = useMemo(() => {
-    if (!note) {
-      return false;
-    }
+    if (!note) return false;
     return debouncedText !== note.rawContent || debouncedTitle !== note.title;
   }, [debouncedText, debouncedTitle, note]);
 
   useEffect(() => {
-    if (!note || !isDirty) {
-      return;
-    }
+    if (!note || !isDirty) return;
 
     setStatus('Saving...');
     invoke<Note>('save_note', {
@@ -262,15 +279,14 @@ export default function NoteEditor({ noteId, classId }: Props) {
       .then((saved) => {
         setNote(saved);
         setStatus('Saved');
+        bump('notesSaved');
         window.setTimeout(() => setStatus(''), 1200);
       })
       .catch(() => setStatus('Save failed'));
   }, [debouncedText, debouncedTitle]);
 
   useEffect(() => {
-    if (!noteId) {
-      return;
-    }
+    if (!noteId) return;
     textareaRef.current?.focus();
   }, [noteId]);
 
@@ -278,68 +294,81 @@ export default function NoteEditor({ noteId, classId }: Props) {
     function onFlushRequest() {
       flushSave();
     }
-
     window.addEventListener('kura:editor-flush', onFlushRequest);
     return () => window.removeEventListener('kura:editor-flush', onFlushRequest);
   });
+  
+  useEffect(() => {
+    function onWikilinkFiltered(e: Event) {
+      if (e instanceof CustomEvent) {
+        setWikilinkCount(e.detail);
+      }
+    }
+    window.addEventListener('kura:wikilink-filtered', onWikilinkFiltered);
+    return () => window.removeEventListener('kura:wikilink-filtered', onWikilinkFiltered);
+  }, []);
 
   useEffect(() => {
     function onEditorAction(event: Event) {
-      if (!noteId || !(event instanceof CustomEvent)) {
-        return;
-      }
+      if (!noteId || !(event instanceof CustomEvent)) return;
 
       const action = event.detail as EditorAction;
       const textarea = textareaRef.current;
-      if (!textarea) {
-        return;
-      }
+      if (!textarea) return;
 
       textarea.focus();
       const { selectionStart, selectionEnd, value } = textarea;
 
-      if (action === 'heading') {
-        applyLinePrefix(value, selectionStart, selectionEnd, '# ');
-        return;
+      // ── Line prefix commands ─────────────────────────────────────────────────
+      if (action === 'heading') return applyLinePrefix(value, selectionStart, selectionEnd, '# ');
+      if (action === 'bullet' || action === 'bullet-dash') return applyLinePrefix(value, selectionStart, selectionEnd, '- ');
+      if (action === 'bullet-star') return applyLinePrefix(value, selectionStart, selectionEnd, '* ');
+      if (action === 'numbered') return applyLinePrefix(value, selectionStart, selectionEnd, '1. ');
+      if (action === 'quote') return applyLinePrefix(value, selectionStart, selectionEnd, '> ');
+
+      // ── Snippet inserts ──────────────────────────────────────────────────────
+      if (action === 'table') return insertSnippet(SLASH_COMMANDS.find((item) => item.id === 'table')?.snippet ?? '');
+      if (action === 'image') return insertSnippet(SLASH_COMMANDS.find((item) => item.id === 'image')?.snippet ?? '');
+      if (action === 'code') return insertSnippet('```\n\n```');
+      if (action === 'divider') return insertSnippet('\n---\n');
+      if (action === 'flashcard') return insertSnippet(SLASH_COMMANDS.find((item) => item.id === 'flashcard')?.snippet ?? '');
+
+      // ── Smart-colon — appends " :: " to end of current line ──────────────────
+      if (action === 'smart-colon') {
+        const { lineEnd } = getLineRange(value, selectionStart);
+        const insertion = ' :: ';
+        const nextValue = value.slice(0, lineEnd) + insertion + value.slice(lineEnd);
+        return updateTextWithSelection(nextValue, lineEnd + insertion.length);
       }
 
-      if (action === 'bullet') {
-        applyLinePrefix(value, selectionStart, selectionEnd, '- ');
-        return;
-      }
+      // ── Indentation ──────────────────────────────────────────────────────────
+      if (action === 'indent') return applyIndent(value, selectionStart, selectionEnd, false);
+      if (action === 'outdent') return applyIndent(value, selectionStart, selectionEnd, true);
 
-      if (action === 'quote') {
-        applyLinePrefix(value, selectionStart, selectionEnd, '> ');
-        return;
+      // ── Inline wrappers ──────────────────────────────────────────────────────
+      if (action === 'bold') {
+        const inner = value.slice(selectionStart, selectionEnd);
+        const insertion = `**${inner}**`;
+        const nextValue = value.slice(0, selectionStart) + insertion + value.slice(selectionEnd);
+        return updateTextWithSelection(nextValue, selectionStart + 2, selectionStart + insertion.length - 2);
       }
-
-      if (action === 'table') {
-        insertSnippet(SLASH_COMMANDS.find((item) => item.id === 'table')?.snippet ?? '');
-        return;
+      if (action === 'italic') {
+        const inner = value.slice(selectionStart, selectionEnd);
+        const insertion = `_${inner}_`;
+        const nextValue = value.slice(0, selectionStart) + insertion + value.slice(selectionEnd);
+        return updateTextWithSelection(nextValue, selectionStart + 1, selectionStart + insertion.length - 1);
       }
-
-      if (action === 'image') {
-        insertSnippet(SLASH_COMMANDS.find((item) => item.id === 'image')?.snippet ?? '');
-        return;
+      if (action === 'strikethrough') {
+        const inner = value.slice(selectionStart, selectionEnd);
+        const insertion = `~~${inner}~~`;
+        const nextValue = value.slice(0, selectionStart) + insertion + value.slice(selectionEnd);
+        return updateTextWithSelection(nextValue, selectionStart + 2, selectionStart + insertion.length - 2);
       }
-
-      if (action === 'code') {
-        insertSnippet(SLASH_COMMANDS.find((item) => item.id === 'code')?.snippet ?? '');
-        return;
-      }
-
-      if (action === 'flashcard') {
-        insertSnippet(SLASH_COMMANDS.find((item) => item.id === 'flashcard')?.snippet ?? '');
-        return;
-      }
-
-      if (action === 'indent') {
-        applyIndent(value, selectionStart, selectionEnd, false);
-        return;
-      }
-
-      if (action === 'outdent') {
-        applyIndent(value, selectionStart, selectionEnd, true);
+      if (action === 'highlight') {
+        const inner = value.slice(selectionStart, selectionEnd);
+        const insertion = `==${inner}==`;
+        const nextValue = value.slice(0, selectionStart) + insertion + value.slice(selectionEnd);
+        return updateTextWithSelection(nextValue, selectionStart + 2, selectionStart + insertion.length - 2);
       }
     }
 
@@ -356,9 +385,40 @@ export default function NoteEditor({ noteId, classId }: Props) {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Emit typing event for the toolbar auto-hide system
+    window.dispatchEvent(new CustomEvent('kura:editor-typing'));
+    if (typingTimer.current) window.clearTimeout(typingTimer.current);
+    typingTimer.current = window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('kura:editor-idle'));
+    }, 1800);
+    
     const textarea = e.currentTarget;
     const { selectionStart, selectionEnd, value } = textarea;
     const isCollapsed = selectionStart === selectionEnd;
+    
+    if (showWikilinks) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setWikilinkIndex((prev) => (prev + 1) % Math.max(1, wikilinkCount));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setWikilinkIndex((prev) => (prev - 1 + Math.max(1, wikilinkCount)) % Math.max(1, wikilinkCount));
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const activeEl = document.getElementById(`wikilink-item-${wikilinkIndex}`);
+        if (activeEl) activeEl.click();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowWikilinks(false);
+        return;
+      }
+    }
 
     if (showSlashMenu) {
       if (e.key === 'ArrowDown') {
@@ -387,13 +447,13 @@ export default function NoteEditor({ noteId, classId }: Props) {
       e.preventDefault();
       applyIndent(value, selectionStart, selectionEnd, e.shiftKey);
       closeSlashMenu();
+      setShowWikilinks(false);
       return;
     }
 
     if (!isCollapsed) {
-      if (showSlashMenu) {
-        closeSlashMenu();
-      }
+      if (showSlashMenu) closeSlashMenu();
+      if (showWikilinks) setShowWikilinks(false);
       return;
     }
 
@@ -403,6 +463,35 @@ export default function NoteEditor({ noteId, classId }: Props) {
         e.preventDefault();
         setShowSlashMenu(true);
         setSlashIndex(0);
+        return;
+      }
+    }
+    
+    if (e.key === '[') {
+      const { lineStart } = getCurrentLine(value, selectionStart);
+      const typedPrefix = value.slice(lineStart, selectionStart);
+      if (typedPrefix.endsWith('[')) {
+        e.preventDefault();
+        const insertion = '[]]';
+        const nextValue = value.slice(0, selectionStart) + insertion + value.slice(selectionEnd);
+        updateTextWithSelection(nextValue, selectionStart + 1);
+        setShowWikilinks(true);
+        setWikilinkQuery('');
+        setWikilinkIndex(0);
+        
+        // Approximate pos
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            if (rect.x > 0 && rect.y > 0) {
+                setWikilinkPos({ x: rect.x, y: rect.y });
+            } else {
+                setWikilinkPos({ x: 300, y: 300 }); 
+            }
+        } else {
+           setWikilinkPos({ x: 300, y: 300 }); 
+        }
         return;
       }
     }
@@ -432,17 +521,6 @@ export default function NoteEditor({ noteId, classId }: Props) {
       e.preventDefault();
       const nextValue = value.slice(0, selectionStart) + e.key + closePair + value.slice(selectionEnd);
       updateTextWithSelection(nextValue, selectionStart + 1);
-      closeSlashMenu();
-      return;
-    }
-
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const applied = applyIndent(value, selectionStart, selectionEnd, e.shiftKey);
-      if (!applied) {
-        return;
-      }
-
       closeSlashMenu();
       return;
     }
@@ -510,21 +588,146 @@ export default function NoteEditor({ noteId, classId }: Props) {
       }
     }
 
-    if (showSlashMenu && e.key.length === 1) {
-      closeSlashMenu();
-    }
+    if (showSlashMenu && e.key.length === 1) closeSlashMenu();
+  };
+  
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setText(e.target.value);
+      
+      if (showWikilinks) {
+        const textBeforeCursor = e.target.value.slice(0, e.target.selectionStart);
+        const match = textBeforeCursor.match(/\[\[([^\]]*)$/);
+        if (match) {
+           setWikilinkQuery(match[1]);
+           setWikilinkIndex(0);
+        } else {
+           setShowWikilinks(false);
+        }
+      }
   };
 
   const emitSelection = () => {
     const textarea = textareaRef.current;
-    if (!textarea) {
-      return;
-    }
+    if (!textarea) return;
 
     const { selectionStart, selectionEnd, value } = textarea;
-    const selected = value.slice(Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd)).trim();
-    window.dispatchEvent(new CustomEvent('kura:editor-selection', { detail: selected }));
+    const isCollapsed = selectionStart === selectionEnd;
+    
+    if (isCollapsed) {
+        setSelectionPos(null);
+        setSelectedText('');
+    } else {
+        const selected = value.slice(Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd)).trim();
+        setSelectedText(selected);
+        
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            if (rect.width > 0) {
+               setSelectionPos({ x: rect.left + rect.width / 2, y: rect.top });
+            } else {
+               const taRect = textarea.getBoundingClientRect();
+               setSelectionPos({ x: taRect.left + taRect.width / 2, y: taRect.top + 60 });
+            }
+        }
+        window.dispatchEvent(new CustomEvent('kura:editor-selection', { detail: selected }));
+    }
   };
+
+  const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (ghostRef.current) {
+        ghostRef.current.scrollTop = e.currentTarget.scrollTop;
+        ghostRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  };
+  
+  const onWikilinkSelect = (targetNoteId: number, targetTitle: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const { selectionStart, value } = textarea;
+    
+    // Replace the [[query... with [[title]]
+    const textBeforeCursor = value.slice(0, selectionStart);
+    const textAfterCursor = value.slice(selectionStart);
+    
+    const lastBracketIdx = textBeforeCursor.lastIndexOf('[[');
+    if (lastBracketIdx !== -1) {
+       // If there's already closing brackets right after cursor, we replace them.
+       const afterMatch = textAfterCursor.match(/^([^\]]*\]\])/);
+       let insertion = `[[${targetTitle}]]`;
+       let nextValue = value.slice(0, lastBracketIdx) + insertion + (afterMatch ? textAfterCursor.slice(afterMatch[1].length) : textAfterCursor);
+       updateTextWithSelection(nextValue, lastBracketIdx + insertion.length);
+    }
+    
+    setShowWikilinks(false);
+  };
+  
+  const onFlashcard = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const { selectionStart, selectionEnd, value } = textarea;
+    const selected = value.slice(Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd));
+    const replacement = `**==${selected.trim()}==** :: `;
+    const nextValue = value.slice(0, selectionStart) + replacement + value.slice(selectionEnd);
+    updateTextWithSelection(nextValue, selectionStart + replacement.length);
+    setSelectionPos(null);
+  };
+
+  const onHighlight = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const { selectionStart, selectionEnd, value } = textarea;
+    const selected = value.slice(Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd));
+    const replacement = `==${selected}==`;
+    const nextValue = value.slice(0, selectionStart) + replacement + value.slice(selectionEnd);
+    updateTextWithSelection(nextValue, selectionStart + replacement.length);
+    setSelectionPos(null);
+  };
+  
+  const renderGhostText = () => {
+    // Ensuring a zero-width space is present for empty lines so they take up 1 line-height
+    return text.split('\n').map((line, i) => {
+      let content: React.ReactNode = line || '\u200B';
+      let fontWeight = 400;
+      let color = 'transparent';
+      let backgroundColor = 'transparent';
+      let gutterIcon = null;
+
+      if (line.match(/^#{1,6}\s/)) {
+        fontWeight = 600;
+        color = 'rgba(236, 238, 242, 0.4)'; // slightly thicker layer for bolder text effect under normal text
+      }
+      if (line.includes('::')) {
+        backgroundColor = 'var(--color-accent-dim)'; // subtle teal tint
+        gutterIcon = (
+          <span style={{ position: 'absolute', left: '-20px', fontSize: '11px', color: 'var(--color-accent)', opacity: 0.8, userSelect: 'none' }}>
+            ⬡
+          </span>
+        );
+      }
+      
+      // highlight wikilinks rendering logic
+      if (typeof content === 'string' && content.includes('[[')) {
+        const parts = content.split(/(\[\[.*?\]\])/g);
+        content = parts.map((p, j) => {
+          if (p.startsWith('[[') && p.endsWith(']]')) {
+            return <span key={j} style={{ borderBottom: '1.5px dotted rgba(255,255,255,0.4)', paddingBottom: 1 }}>{p}</span>;
+          }
+          return p;
+        });
+      }
+
+      return (
+        <div key={i} style={{ position: 'relative', minHeight: '1.8em', backgroundColor, fontWeight, color }}>
+          {gutterIcon}
+          {content}
+        </div>
+      );
+    });
+  };
+
+  const cfg = toolbarConfig;
 
   return (
     <section
@@ -534,9 +737,26 @@ export default function NoteEditor({ noteId, classId }: Props) {
         position: 'relative',
         flexDirection: 'column',
         gap: 'var(--spacing-md)',
-        padding: 'var(--spacing-lg) var(--spacing-xl)'
+        padding: cfg?.position === 'left'
+          ? 'var(--spacing-lg) var(--spacing-xl) var(--spacing-lg) calc(var(--spacing-xl) + 48px)'
+          : 'var(--spacing-lg) var(--spacing-xl)'
       }}
     >
+      {cfg && cfg.position !== 'off' && (
+        <FormattingToolbar
+          noteId={noteId}
+          position={cfg.position}
+          autoHide={cfg.autoHide}
+          peekEnabled={cfg.peekEnabled}
+          peekDurationMs={cfg.peekDurationMs}
+          peekFadeInMs={cfg.peekFadeInMs}
+          peekFadeOutMs={cfg.peekFadeOutMs}
+          hoverShowMs={cfg.hoverShowMs}
+          hoverHideMs={cfg.hoverHideMs}
+          enabledTools={cfg.enabledTools}
+          onEnabledToolsChange={onToolbarEnabledToolsChange}
+        />
+      )}
       <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center' }}>
         <input
           value={title}
@@ -556,32 +776,72 @@ export default function NoteEditor({ noteId, classId }: Props) {
             outline: 'none'
           }}
         />
-        <div style={{ fontSize: 12, minWidth: 70, textAlign: 'right', color: 'var(--color-text-muted)' }}>{status}</div>
       </div>
-      <textarea
-        ref={textareaRef}
-        autoFocus
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onMouseUp={emitSelection}
-        onKeyUp={emitSelection}
-        onBlur={flushSave}
-        onKeyDown={handleKeyDown}
-        placeholder="Write your lecture notes in Markdown..."
-        style={{
-          flex: 1,
-          width: '100%',
-          padding: 'var(--spacing-sm) 0 var(--spacing-lg)',
-          border: 'none',
-          outline: 'none',
-          resize: 'none',
-          lineHeight: 1.8,
-          fontSize: 15,
-          background: 'transparent',
-          color: 'var(--color-text)',
-          fontFamily: 'var(--font-note)'
-        }}
-      />
+      
+      <div style={{ flex: 1, position: 'relative', width: '100%', overflow: 'hidden' }}>
+        {/* Ghost Layer Background */}
+        <div 
+          ref={ghostRef}
+          style={{
+            position: 'absolute',
+            top: 0, left: 0, right: 0, bottom: 0,
+            padding: 'var(--spacing-sm) 0 var(--spacing-lg)',
+            lineHeight: 1.8,
+            fontSize: 15,
+            fontFamily: 'var(--font-note)',
+            whiteSpace: 'pre-wrap',
+            wordWrap: 'break-word',
+            color: 'transparent',
+            pointerEvents: 'none',
+            overflow: 'hidden'
+          }}
+          aria-hidden="true"
+        >
+          {renderGhostText()}
+        </div>
+
+        {/* Real Textarea superimposed over Ghost layer */}
+        <textarea
+          id="scholr-main-editor"
+          ref={textareaRef}
+          autoFocus
+          value={text}
+          onChange={handleTextChange}
+          onScroll={handleScroll}
+          onMouseUp={emitSelection}
+          onKeyUp={emitSelection}
+          onBlur={flushSave}
+          onKeyDown={handleKeyDown}
+          placeholder={getPlaceholderHint(text.length)}
+          style={{
+            position: 'absolute',
+            top: 0, left: 0, right: 0, bottom: 0,
+            width: '100%',
+            height: '100%',
+            padding: 'var(--spacing-sm) 0 var(--spacing-lg)',
+            border: 'none',
+            outline: 'none',
+            resize: 'none',
+            lineHeight: 1.8,
+            fontSize: 15,
+            background: 'transparent',
+            color: 'var(--color-text)',
+            fontFamily: 'var(--font-note)',
+            caretColor: 'var(--color-text)'
+          }}
+        />
+      </div>
+      
+      {/* The Flashcard Status Bar */}
+      <div className="editor-status-bar" style={{ display: 'flex', gap: 8, fontSize: 13, color: 'var(--color-text-muted)', paddingTop: 'var(--spacing-md)', borderTop: '1px solid var(--color-border)' }}>
+        <span>{text.split(/\s+/).filter(Boolean).length} words</span>
+        <span>·</span>
+        <span>{Math.ceil(text.split(/\s+/).filter(Boolean).length / 200)} min read</span>
+        <span>·</span>
+        <span>{text.split('\n').filter((l) => l.includes('::')).length} cards on this note</span>
+        {status && <><span>·</span><span className="save-status" style={{ color: 'var(--color-success)' }}>{status}</span></>}
+      </div>
+
       {showSlashMenu ? (
         <div
           style={{
@@ -589,10 +849,11 @@ export default function NoteEditor({ noteId, classId }: Props) {
             bottom: 'calc(var(--spacing-lg) + 8px)',
             left: 'var(--spacing-xl)',
             minWidth: 220,
-            borderRadius: 'var(--radius-md)',
+            borderRadius: 'var(--radius-lg)',
             border: '1px solid var(--color-border)',
-            background: 'rgba(11, 12, 15, 0.95)',
-            boxShadow: '0 14px 24px rgba(0, 0, 0, 0.35)',
+            background: 'var(--color-panel-elevated)',
+            backdropFilter: 'blur(12px)',
+            boxShadow: 'var(--shadow-lg)',
             overflow: 'hidden',
             zIndex: 15
           }}
@@ -619,6 +880,23 @@ export default function NoteEditor({ noteId, classId }: Props) {
           ))}
         </div>
       ) : null}
+      
+      {showWikilinks && (
+          <WikilinkPopover 
+             query={wikilinkQuery} 
+             position={wikilinkPos} 
+             onSelect={onWikilinkSelect} 
+             onClose={() => setShowWikilinks(false)} 
+             selectedIndex={wikilinkIndex} 
+          />
+      )}
+      
+      <SelectionToolbar 
+         selectedText={selectedText} 
+         position={selectionPos} 
+         onFlashcard={onFlashcard} 
+         onHighlight={onHighlight} 
+      />
     </section>
   );
 }

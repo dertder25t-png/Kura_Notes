@@ -1,18 +1,21 @@
 import NoteEditor from './NoteEditor';
 import StudyPanel from './StudyPanel';
 import FlashcardBuilder from '../flashcards/FlashcardBuilder';
-import { AppMode } from '../../types';
+import { AppMode, ToolbarConfig, ToolbarToolId } from '../../types';
 
 interface Props {
   noteId: number | null;
   classId: number | null;
-  rightPanel: RightPanel;
+  rightPanel?: RightPanel;
   mode: AppMode;
+  onSetRightPanel?: (panel: RightPanel) => void;
+  toolbarConfig?: ToolbarConfig;
+  onToolbarEnabledToolsChange?: (tools: ToolbarToolId[]) => void;
 }
 
 type RightPanel = 'study' | 'flashcards';
 
-export default function DualPane({ noteId, classId, rightPanel, mode }: Props) {
+export default function DualPane({ noteId, classId, rightPanel, onSetRightPanel, mode, toolbarConfig, onToolbarEnabledToolsChange }: Props) {
   if (mode === 'focus') {
     return (
       <div style={{ height: '100%', display: 'flex', justifyContent: 'center', padding: 'var(--spacing-xl)', background: 'var(--color-panel)' }}>
@@ -26,7 +29,7 @@ export default function DualPane({ noteId, classId, rightPanel, mode }: Props) {
             backdropFilter: 'blur(3px)'
           }}
         >
-          <NoteEditor noteId={noteId} classId={classId} />
+          <NoteEditor noteId={noteId} classId={classId} toolbarConfig={toolbarConfig} onToolbarEnabledToolsChange={onToolbarEnabledToolsChange} />
         </div>
       </div>
     );
@@ -43,7 +46,7 @@ export default function DualPane({ noteId, classId, rightPanel, mode }: Props) {
             transition: 'flex 200ms ease'
           }}
         >
-          <NoteEditor noteId={noteId} classId={classId} />
+          <NoteEditor noteId={noteId} classId={classId} toolbarConfig={toolbarConfig} onToolbarEnabledToolsChange={onToolbarEnabledToolsChange} />
         </div>
 
         <div
