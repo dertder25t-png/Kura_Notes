@@ -25,3 +25,18 @@ CREATE TABLE IF NOT EXISTS folders (
   created_at  TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS flashcards (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  note_id           INTEGER REFERENCES notes(id) ON DELETE CASCADE,
+  class_id          INTEGER REFERENCES classes(id) ON DELETE SET NULL,
+  source_line_index  INTEGER DEFAULT 0,
+  context_type      TEXT NOT NULL,
+  context_label     TEXT NOT NULL,
+  front             TEXT NOT NULL,
+  back              TEXT NOT NULL,
+  source_line       TEXT DEFAULT '',
+  metadata_json     TEXT DEFAULT '{}',
+  created_at        TEXT DEFAULT (datetime('now')),
+  updated_at        TEXT DEFAULT (datetime('now'))
+);
+

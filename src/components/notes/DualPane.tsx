@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import NoteEditor from './NoteEditor';
 import StudyPanel from './StudyPanel';
 import FlashcardBuilder from '../flashcards/FlashcardBuilder';
@@ -16,6 +17,17 @@ interface Props {
 type RightPanel = 'study' | 'flashcards';
 
 export default function DualPane({ noteId, classId, rightPanel, onSetRightPanel, mode, toolbarConfig, onToolbarEnabledToolsChange }: Props) {
+  const [isFlashcardsFullscreen, setIsFlashcardsFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (rightPanel !== 'flashcards' || mode !== 'study') {
+      setIsFlashcardsFullscreen(false);
+    }
+  }, [rightPanel, mode]);
+
+  const showFlashcards = rightPanel === 'flashcards';
+  const isRightPanelFullscreen = showFlashcards && isFlashcardsFullscreen;
+
   if (mode === 'focus') {
     return (
       <div style={{ height: '100%', display: 'flex', justifyContent: 'center', padding: 'var(--spacing-xl)', background: 'var(--color-panel)' }}>
@@ -29,7 +41,7 @@ export default function DualPane({ noteId, classId, rightPanel, onSetRightPanel,
             backdropFilter: 'blur(3px)'
           }}
         >
-          <NoteEditor noteId={noteId} classId={classId} toolbarConfig={toolbarConfig} onToolbarEnabledToolsChange={onToolbarEnabledToolsChange} />
+          <NoteEditor noteId={noteId} classId={classId} appMode={mode} toolbarConfig={toolbarConfig} onToolbarEnabledToolsChange={onToolbarEnabledToolsChange} />
         </div>
       </div>
     );
@@ -40,18 +52,21 @@ export default function DualPane({ noteId, classId, rightPanel, onSetRightPanel,
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <div
           style={{
-            flex: 1.4,
-            borderRight: '1px solid var(--color-border)',
+            flex: isRightPanelFullscreen ? 0 : 1.4,
+            borderRight: isRightPanelFullscreen ? 'none' : '1px solid var(--color-border)',
             overflow: 'hidden',
-            transition: 'flex 200ms ease'
+            transition: 'flex 200ms ease',
+            minWidth: isRightPanelFullscreen ? 0 : undefined,
+            opacity: isRightPanelFullscreen ? 0 : 1,
+            pointerEvents: isRightPanelFullscreen ? 'none' : 'auto'
           }}
         >
-          <NoteEditor noteId={noteId} classId={classId} toolbarConfig={toolbarConfig} onToolbarEnabledToolsChange={onToolbarEnabledToolsChange} />
+          <NoteEditor noteId={noteId} classId={classId} appMode={mode} toolbarConfig={toolbarConfig} onToolbarEnabledToolsChange={onToolbarEnabledToolsChange} />
         </div>
 
         <div
           style={{
-            flex: 1,
+            flex: isRightPanelFullscreen ? 1 : 1,
             overflow: 'hidden',
             background: 'var(--color-panel)',
             transform: 'translateX(0)',
@@ -62,7 +77,11 @@ export default function DualPane({ noteId, classId, rightPanel, onSetRightPanel,
           {rightPanel === 'study' ? (
             <StudyPanel noteId={noteId} />
           ) : (
-            <FlashcardBuilder noteId={noteId} />
+            <FlashcardBuilder
+              noteId={noteId}
+              isFullscreen={isRightPanelFullscreen}
+              onToggleFullscreen={() => setIsFlashcardsFullscreen((prev) => !prev)}
+            />
           )}
         </div>
       </div>

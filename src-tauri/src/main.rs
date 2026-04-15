@@ -1,14 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod omni_capture;
 mod storage;
 
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             storage::db::init(app.handle())?;
+            omni_capture::install_global_shortcuts(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -27,6 +30,10 @@ fn main() {
             commands::note_commands::move_note_to_folder,
             commands::note_commands::delete_note,
             commands::note_commands::bootstrap_first_launch,
+            commands::note_commands::quick_capture,
+            commands::note_commands::create_flashcard,
+            commands::note_commands::list_flashcards,
+            commands::note_commands::delete_flashcard,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Scholr");

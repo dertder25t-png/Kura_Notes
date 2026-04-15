@@ -18,6 +18,21 @@ export interface Note {
   updatedAt: string;
 }
 
+export interface Flashcard {
+  id: number;
+  noteId?: number | null;
+  classId?: number | null;
+  sourceLineIndex: number;
+  contextType: string;
+  contextLabel: string;
+  front: string;
+  back: string;
+  sourceLine: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface FolderItem {
   id: number;
   classId?: number | null;

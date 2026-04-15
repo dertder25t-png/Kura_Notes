@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import { invoke } from './utils/invoke';
+import { isTauriRuntime } from './utils/invoke';
 import NavigatorRail from './components/layout/NavigatorRail';
 import ToolRail from './components/layout/ToolRail';
 import TabBar, { NoteTab } from './components/layout/TabBar';
@@ -197,6 +199,34 @@ export default function App() {
       })
       .catch(() => setTags([]));
   }, [dataVersion]);
+
+  useEffect(() => {
+    const refresh = () => setDataVersion((version) => version + 1);
+
+    window.addEventListener('kura:data-invalidated', refresh as EventListener);
+
+    let unlisten: (() => void) | null = null;
+    if (isTauriRuntime) {
+      void listen('kura:data-invalidated', refresh).then((dispose) => {
+        unlisten = dispose;
+      });
+    }
+
+    return () => {
+      window.removeEventListener('kura:data-invalidated', refresh as EventListener);
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    function onOpenFlashcards() {
+      setRightPanel('flashcards');
+      setAppMode('study');
+    }
+
+    window.addEventListener('kura:open-flashcards', onOpenFlashcards as EventListener);
+    return () => window.removeEventListener('kura:open-flashcards', onOpenFlashcards as EventListener);
+  }, []);
 
   useEffect(() => {
     invoke<FolderItem[]>('list_folders', { classId: activeClassId ?? null })

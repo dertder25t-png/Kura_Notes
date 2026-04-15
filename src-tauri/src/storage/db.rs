@@ -97,6 +97,27 @@ fn migrate_folders(conn: &Connection) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn migrate_flashcards(conn: &Connection) -> anyhow::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS flashcards (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            note_id           INTEGER REFERENCES notes(id) ON DELETE CASCADE,
+            class_id          INTEGER REFERENCES classes(id) ON DELETE SET NULL,
+            source_line_index  INTEGER DEFAULT 0,
+            context_type      TEXT NOT NULL,
+            context_label     TEXT NOT NULL,
+            front             TEXT NOT NULL,
+            back              TEXT NOT NULL,
+            source_line       TEXT DEFAULT '',
+            metadata_json     TEXT DEFAULT '{}',
+            created_at        TEXT DEFAULT (datetime('now')),
+            updated_at        TEXT DEFAULT (datetime('now'))
+        );",
+    )?;
+
+    Ok(())
+}
+
 pub fn db_path(app_handle: &tauri::AppHandle) -> PathBuf {
     app_handle
         .path()
@@ -115,6 +136,7 @@ pub fn init(app_handle: &tauri::AppHandle) -> anyhow::Result<()> {
     conn.execute_batch(include_str!("../../../schema.sql"))?;
     migrate_nullable_class_references(&conn)?;
     migrate_folders(&conn)?;
+    migrate_flashcards(&conn)?;
     Ok(())
 }
 

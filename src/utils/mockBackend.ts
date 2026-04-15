@@ -1,15 +1,24 @@
-import { ClassItem, FolderItem, Note } from '../types';
+import { ClassItem, Flashcard, FolderItem, Note } from '../types';
 
 interface MockDB {
   classes: ClassItem[];
   folders: FolderItem[];
   notes: Note[];
+    flashcards: Flashcard[];
 }
 
 function getDb(): MockDB {
   const data = localStorage.getItem('scholr_mock_db');
-  if (data) return JSON.parse(data);
-  return { classes: [], folders: [], notes: [] };
+    if (data) {
+        const parsed = JSON.parse(data) as Partial<MockDB>;
+        return {
+            classes: parsed.classes ?? [],
+            folders: parsed.folders ?? [],
+            notes: parsed.notes ?? [],
+            flashcards: parsed.flashcards ?? []
+        };
+    }
+    return { classes: [], folders: [], notes: [], flashcards: [] };
 }
 
 function saveDb(db: MockDB) {
@@ -18,6 +27,50 @@ function saveDb(db: MockDB) {
 
 function generateId(): number {
   return Date.now() + Math.floor(Math.random() * 1000);
+}
+
+function ensureDefaultWorkspace(db: MockDB) {
+    let classItem = db.classes[0];
+    if (!classItem) {
+        classItem = {
+            id: generateId(),
+            name: 'My Notes',
+            color: '#6f7ea8',
+            createdAt: new Date().toISOString()
+        };
+        db.classes.push(classItem);
+    }
+
+    let inbox = db.folders.find((folder) => folder.classId === classItem.id && folder.name === 'Inbox');
+    if (!inbox) {
+        inbox = {
+            id: generateId(),
+            classId: classItem.id,
+            name: 'Inbox',
+            createdAt: new Date().toISOString()
+        };
+        db.folders.push(inbox);
+    }
+
+    return { classId: classItem.id, folderId: inbox.id };
+}
+
+function captureTitle() {
+    return `Inbox ${new Date().toISOString().slice(0, 10)}`;
+}
+
+function normalizeCaptureContent(content: string, tag?: string | null) {
+    const cleaned = content.trim().replace(/\r\n/g, '\n');
+    if (!cleaned) {
+        return '';
+    }
+
+    const safeTag = tag?.trim().replace(/^#/, '');
+    const lines = cleaned.split('\n');
+    const firstLine = lines.shift()?.trim() ?? '';
+    const prefix = safeTag ? `- #${safeTag} ${firstLine}` : `- ${firstLine}`;
+    const continuation = lines.map((line) => `  ${line.trim()}`);
+    return [prefix, ...continuation].join('\n');
 }
 
 export async function mockInvoke(cmd: string, args: Record<string, any> = {}): Promise<any> {
@@ -166,6 +219,44 @@ Click ✦ Synthesize to generate a clean study guide from this note.
             saveDb(db);
             return newNote;
         }
+        case 'quick_capture': {
+            const { classId, folderId } = ensureDefaultWorkspace(db);
+            const title = captureTitle();
+            const entry = normalizeCaptureContent(args.content ?? '', args.tag ?? null);
+
+            if (!entry) {
+                throw new Error('Capture content cannot be empty');
+            }
+
+            const note = db.notes.find(n => n.classId === classId && n.folderId === folderId && n.title === title);
+            if (note) {
+                note.rawContent = note.rawContent.trim()
+                    ? `${note.rawContent.trimEnd()}\n${entry}`
+                    : entry;
+                note.updatedAt = new Date().toISOString();
+                saveDb(db);
+            } else {
+                db.notes.push({
+                    id: generateId(),
+                    classId,
+                    folderId,
+                    title,
+                    rawContent: entry,
+                    studyContent: '',
+                    audioTranscript: '',
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                });
+                saveDb(db);
+            }
+
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('kura:data-invalidated'));
+                window.dispatchEvent(new CustomEvent('kura:close-capture-window'));
+            }
+
+            return { noteId: note?.id ?? db.notes[db.notes.length - 1].id, title };
+        }
         case 'move_note_to_folder': {
             const note = db.notes.find(n => n.id === args.noteId);
             if (note) {
@@ -177,9 +268,55 @@ Click ✦ Synthesize to generate a clean study guide from this note.
         }
         case 'delete_note': {
             db.notes = db.notes.filter(n => n.id !== args.noteId);
+            db.flashcards = db.flashcards.filter((card) => card.noteId !== args.noteId);
             saveDb(db);
             return null;
         }
+
+        case 'create_flashcard': {
+            const now = new Date().toISOString();
+            const metadataRaw = typeof args.metadataJson === 'string' ? args.metadataJson : '{}';
+            const card: Flashcard = {
+                id: generateId(),
+                noteId: args.noteId ?? null,
+                classId: args.classId ?? null,
+                sourceLineIndex: Number(args.sourceLineIndex ?? 0),
+                contextType: String(args.contextType ?? 'manual'),
+                contextLabel: String(args.contextLabel ?? 'Manual'),
+                front: String(args.front ?? ''),
+                back: String(args.back ?? ''),
+                sourceLine: String(args.sourceLine ?? ''),
+                metadata: (() => {
+                    try {
+                        return JSON.parse(metadataRaw) as Record<string, unknown>;
+                    } catch {
+                        return {};
+                    }
+                })(),
+                createdAt: now,
+                updatedAt: now,
+            };
+            db.flashcards.unshift(card);
+            saveDb(db);
+            return card;
+        }
+
+        case 'list_flashcards': {
+            const noteId = args.noteId ?? null;
+            const classId = args.classId ?? null;
+            return db.flashcards.filter((card) => {
+                const noteMatch = noteId === null || card.noteId === noteId;
+                const classMatch = classId === null || card.classId === classId;
+                return noteMatch && classMatch;
+            });
+        }
+
+        case 'delete_flashcard': {
+            db.flashcards = db.flashcards.filter((card) => card.id !== args.cardId);
+            saveDb(db);
+            return null;
+        }
+
         default:
             throw new Error(`Mock command not implemented: ${cmd}`);
     }
