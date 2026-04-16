@@ -311,6 +311,26 @@ pub fn delete_flashcard(app_handle: tauri::AppHandle, card_id: i64) -> Result<()
 }
 
 #[tauri::command]
+pub fn log_telemetry_event(
+    app_handle: tauri::AppHandle,
+    event_type: String,
+    note_id: Option<i64>,
+    metadata_json: Option<String>,
+) -> Result<(), String> {
+    let conn = storage::db::get_conn(&app_handle).map_err(|e| e.to_string())?;
+    let metadata = metadata_json.unwrap_or_else(|| "{}".to_string());
+
+    conn.execute(
+        "INSERT INTO telemetry_events (event_type, note_id, metadata_json, created_at)
+         VALUES (?1, ?2, ?3, datetime('now'))",
+        params![event_type, note_id, metadata],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn list_notes(app_handle: tauri::AppHandle, class_id: Option<i64>) -> Result<Vec<Note>, String> {
     let conn = storage::db::get_conn(&app_handle).map_err(|e| e.to_string())?;
     storage::notes::list_notes(&conn, class_id).map_err(|e| e.to_string())

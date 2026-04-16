@@ -91,3 +91,32 @@ export interface ToolbarConfig {
   hoverHideMs: number;
   enabledTools: ToolbarToolId[];
 }
+
+export interface AiModelOption {
+  name: string;
+  sizeBytes?: number | null;
+}
+
+export interface AiBenchmarkResult {
+  model: string;
+  latencyMs: number;
+  score: number;
+  success: boolean;
+  error?: string | null;
+}
+
+export interface AiSetupSnapshot {
+  selectedModel?: string | null;
+  ollamaUrl: string;
+  onboardingComplete: boolean;
+  availableModels: AiModelOption[];
+  currentModel?: string | null;
+  recommendedModel?: string | null;
+  connectionStatus: string;
+  connectionError?: string | null;
+}
+
+export interface AiBenchmarkSummary {
+  results: AiBenchmarkResult[];
+  recommendedModel?: string | null;
+}

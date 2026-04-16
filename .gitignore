@@ -2,9 +2,12 @@ node_modules/
 dist/
 .vscode/
 .DS_Store
+notes/
 target/
 src-tauri/target/
 src-tauri/models/
+.env.local
 *.db
 *.db-shm
 *.db-wal
+*.db-journal

@@ -80,9 +80,21 @@ export default function FlashcardBuilder({ noteId, isFullscreen = false, onToggl
     }
   }
 
+  function useHighlightAsBack() {
+    if (highlighted.trim()) {
+      setBack(highlighted.trim());
+    }
+  }
+
   function usePasteAsBack() {
     if (pasted.trim()) {
       setBack(pasted.trim());
+    }
+  }
+
+  function usePasteAsFront() {
+    if (pasted.trim()) {
+      setFront(pasted.trim());
     }
   }
 
@@ -106,6 +118,35 @@ export default function FlashcardBuilder({ noteId, isFullscreen = false, onToggl
     const nextIndex = Math.floor(Math.random() * savedCards.length);
     setActiveIndex(nextIndex);
     setShowBack(false);
+  }
+
+  async function deleteActiveCard() {
+    const active = savedCards[activeIndex];
+    if (!active || !noteId) {
+      return;
+    }
+
+    const confirmed = window.confirm('Delete this flashcard? This cannot be undone.');
+    if (!confirmed) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await invoke('delete_flashcard', { cardId: active.id });
+      setStatus('Card deleted');
+      window.setTimeout(() => setStatus(''), 1200);
+
+      const nextIndex = Math.max(0, Math.min(activeIndex, savedCards.length - 2));
+      await loadCards(noteId);
+      setActiveIndex(nextIndex);
+      setShowBack(false);
+      window.dispatchEvent(new CustomEvent('kura:data-invalidated'));
+    } catch {
+      setStatus('Could not delete card');
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   async function addCard() {
@@ -201,6 +242,9 @@ export default function FlashcardBuilder({ noteId, isFullscreen = false, onToggl
               <button onClick={() => setShowBack((prev) => !prev)}>
                 {showBack ? 'Hide answer' : 'Reveal answer'}
               </button>
+              <button onClick={() => { void deleteActiveCard(); }} disabled={isSaving} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="trash" size={13} /> Delete card
+              </button>
               <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
                 Card {activeIndex + 1} of {savedCards.length}
               </span>
@@ -237,9 +281,14 @@ export default function FlashcardBuilder({ noteId, isFullscreen = false, onToggl
         <div style={{ minHeight: 48, fontSize: 13, lineHeight: 1.45, color: highlighted ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
           {highlighted || 'Select text in the note editor to capture it here.'}
         </div>
-        <button onClick={useHighlightAsFront} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <Icon name="flashcards" size={13} /> Use highlight as front
-        </button>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <button onClick={useHighlightAsFront} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="flashcards" size={13} /> Use highlight as front
+          </button>
+          <button onClick={useHighlightAsBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="flashcards" size={13} /> Use highlight as back
+          </button>
+        </div>
       </section>
 
       <section style={{ display: 'grid', gap: 8, border: '1px solid var(--color-border)', borderRadius: 10, padding: 10, background: 'rgba(255,255,255,0.02)' }}>
@@ -250,9 +299,14 @@ export default function FlashcardBuilder({ noteId, isFullscreen = false, onToggl
           placeholder="Paste explanation, definition, or answer text..."
           style={{ minHeight: 90, resize: 'vertical', borderRadius: 8, border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.02)', color: 'var(--color-text)', padding: 8, fontSize: 13, lineHeight: 1.5 }}
         />
-        <button onClick={usePasteAsBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <Icon name="code" size={13} /> Use pasted text as back
-        </button>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <button onClick={usePasteAsFront} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="code" size={13} /> Use pasted text as front
+          </button>
+          <button onClick={usePasteAsBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="code" size={13} /> Use pasted text as back
+          </button>
+        </div>
       </section>
 
       <section style={{ display: 'grid', gap: 8, border: '1px solid var(--color-border)', borderRadius: 10, padding: 10, background: 'rgba(255,255,255,0.02)' }}>

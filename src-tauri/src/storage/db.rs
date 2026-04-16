@@ -118,6 +118,35 @@ fn migrate_flashcards(conn: &Connection) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn migrate_app_settings(conn: &Connection) -> anyhow::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS app_settings (
+            key         TEXT PRIMARY KEY,
+            value       TEXT NOT NULL,
+            updated_at  TEXT DEFAULT (datetime('now'))
+        );",
+    )?;
+
+    Ok(())
+}
+
+fn migrate_telemetry(conn: &Connection) -> anyhow::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS telemetry_events (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type    TEXT NOT NULL,
+            note_id       INTEGER REFERENCES notes(id) ON DELETE SET NULL,
+            metadata_json TEXT DEFAULT '{}',
+            created_at    TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_telemetry_event_type_created_at
+        ON telemetry_events(event_type, created_at DESC);",
+    )?;
+
+    Ok(())
+}
+
 pub fn db_path(app_handle: &tauri::AppHandle) -> PathBuf {
     app_handle
         .path()
@@ -137,9 +166,50 @@ pub fn init(app_handle: &tauri::AppHandle) -> anyhow::Result<()> {
     migrate_nullable_class_references(&conn)?;
     migrate_folders(&conn)?;
     migrate_flashcards(&conn)?;
+    migrate_app_settings(&conn)?;
+    migrate_telemetry(&conn)?;
     Ok(())
 }
 
 pub fn get_conn(app_handle: &tauri::AppHandle) -> anyhow::Result<Connection> {
     Ok(Connection::open(db_path(app_handle))?)
+}
+
+pub fn calculate_dynamic_threshold(conn: &Connection) -> anyhow::Result<f32> {
+    let mut stmt = conn.prepare(
+        "SELECT event_type
+         FROM telemetry_events
+         WHERE event_type IN ('CARDS_GENERATED', 'UNDO_TRIGGERED')
+           AND created_at >= datetime('now', '-7 days')
+         ORDER BY created_at ASC",
+    )?;
+
+    let mut rows = stmt.query([])?;
+    let alpha: f32 = 0.25;
+    let mut ema_undo_rate: Option<f32> = None;
+    let mut sample_count = 0_u32;
+
+    while let Some(row) = rows.next()? {
+        let event_type: String = row.get(0)?;
+        let sample = if event_type == "UNDO_TRIGGERED" { 1.0 } else { 0.0 };
+        sample_count += 1;
+        ema_undo_rate = Some(match ema_undo_rate {
+            Some(previous) => alpha * sample + (1.0 - alpha) * previous,
+            None => sample,
+        });
+    }
+
+    if sample_count == 0 {
+        return Ok(0.85);
+    }
+
+    let undo_rate = ema_undo_rate.unwrap_or(0.85);
+
+    if undo_rate > 0.15 {
+        Ok(0.92)
+    } else if undo_rate < 0.05 {
+        Ok(0.78)
+    } else {
+        Ok(0.85)
+    }
 }

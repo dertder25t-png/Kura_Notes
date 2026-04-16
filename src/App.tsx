@@ -9,7 +9,7 @@ import DualPane from './components/notes/DualPane';
 import FolderCanvas from './components/notes/FolderCanvas';
 import { RightPanel } from './components/tools/toolRegistry';
 import Icon from './components/ui/Icon';
-import { AppMode, CanvasLayoutMode, ClassItem, FolderItem, NavPlacement, ToolbarConfig, ToolbarToolId, ALL_TOOLBAR_TOOL_IDS, Note, QuickActionsMode, TabPlacement } from './types';
+import { AppMode, AiBenchmarkSummary, AiSetupSnapshot, CanvasLayoutMode, ClassItem, FolderItem, NavPlacement, ToolbarConfig, ToolbarToolId, ALL_TOOLBAR_TOOL_IDS, Note, QuickActionsMode, TabPlacement } from './types';
 
 const TAB_PLACEMENT_KEY = 'kura.tab.placement';
 const APP_MODE_KEY = 'kura.app.mode';
@@ -131,6 +131,7 @@ export default function App() {
   }
   const [isIslandOpen, setIsIslandOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsStartSection, setSettingsStartSection] = useState<SettingsSection>('layout');
   const [islandIntent, setIslandIntent] = useState<'note' | 'folder' | 'tag' | 'note-with-folder'>('note');
   const [islandDescription, setIslandDescription] = useState('');
   const [islandUseTag, setIslandUseTag] = useState(true);
@@ -143,6 +144,16 @@ export default function App() {
   const [islandFolderId, setIslandFolderId] = useState<number | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
   const attemptedInstantCapture = useRef(false);
+
+  function openSettings(section: SettingsSection = 'layout') {
+    setSettingsStartSection(section);
+    setIsSettingsOpen(true);
+  }
+
+  function toggleSettings(section: SettingsSection = 'layout') {
+    setSettingsStartSection(section);
+    setIsSettingsOpen((current) => !current);
+  }
 
   useEffect(() => {
     window.localStorage.setItem(TAB_PLACEMENT_KEY, tabPlacement);
@@ -188,6 +199,7 @@ export default function App() {
       .then((res) => {
         if (!res.alreadyDone && res.noteId) {
           window.localStorage.setItem(LAST_OPEN_NOTE_KEY, String(res.noteId));
+          openSettings('ai');
         }
         return invoke<ClassItem[]>('list_classes');
       })
@@ -578,7 +590,7 @@ export default function App() {
       appMode={appMode}
       isSettingsOpen={isSettingsOpen}
       onSetAppMode={setAppMode}
-      onToggleSettings={() => setIsSettingsOpen((v) => !v)}
+      onToggleSettings={() => toggleSettings('layout')}
       layoutMode={canvasLayoutMode}
       onCycleLayoutMode={() =>
         setCanvasLayoutMode((current) =>
@@ -643,7 +655,7 @@ export default function App() {
               appMode={appMode}
               onSetAppMode={setAppMode}
               isSettingsOpen={isSettingsOpen}
-              onToggleSettings={() => setIsSettingsOpen(v => !v)}
+              onToggleSettings={() => toggleSettings('layout')}
               onCreateNote={handleCreateNote}
               onCreateFolder={handleCreateFolder}
               onCreateClass={handleCreateClass}
@@ -924,6 +936,7 @@ export default function App() {
         {isSettingsOpen && (
           <SettingsModal
             onClose={() => setIsSettingsOpen(false)}
+            initialSection={settingsStartSection}
             navPlacement={navPlacement}
             onNavPlacement={setNavPlacement}
             animationsEnabled={animationsEnabled}
@@ -948,10 +961,11 @@ export default function App() {
 
 // ─── SettingsModal ────────────────────────────────────────────────────────────
 
-type SettingsSection = 'layout' | 'sidebar' | 'tabs' | 'toolbar';
+type SettingsSection = 'layout' | 'sidebar' | 'tabs' | 'toolbar' | 'ai';
 
 interface SettingsModalProps {
   onClose: () => void;
+  initialSection: SettingsSection;
   navPlacement: NavPlacement;
   onNavPlacement: (v: NavPlacement) => void;
   animationsEnabled: boolean;
@@ -973,6 +987,7 @@ const SECTION_LABELS: Record<SettingsSection, string> = {
   sidebar: 'Sidebar',
   tabs: 'Tabs & Actions',
   toolbar: 'Formatting Toolbar',
+  ai: 'AI Models',
 };
 
 const SECTION_ICONS: Record<SettingsSection, string> = {
@@ -980,10 +995,11 @@ const SECTION_ICONS: Record<SettingsSection, string> = {
   sidebar: '▎',
   tabs: '⊟',
   toolbar: '✦',
+  ai: '◌',
 };
 
 function SettingsModal({
-  onClose, navPlacement, onNavPlacement,
+  onClose, initialSection, navPlacement, onNavPlacement,
   animationsEnabled, onAnimationsEnabled,
   sidebarDelayMs, onSidebarDelayMs,
   tabPlacement, onTabPlacement,
@@ -991,7 +1007,100 @@ function SettingsModal({
   compactRailEnabled, onCompactRailEnabled,
   toolbarConfig, onUpdateToolbar,
 }: SettingsModalProps) {
-  const [section, setSection] = useState<SettingsSection>('layout');
+  const [section, setSection] = useState<SettingsSection>(initialSection);
+  const [aiSetup, setAiSetup] = useState<AiSetupSnapshot | null>(null);
+  const [aiModelDraft, setAiModelDraft] = useState('');
+  const [ollamaUrlDraft, setOllamaUrlDraft] = useState('http://127.0.0.1:11434');
+  const [aiStatus, setAiStatus] = useState('');
+  const [aiBenchmark, setAiBenchmark] = useState<AiBenchmarkSummary | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+
+  useEffect(() => {
+    setSection(initialSection);
+  }, [initialSection]);
+
+  useEffect(() => {
+    if (section !== 'ai') {
+      return;
+    }
+
+    let cancelled = false;
+    setAiBusy(true);
+    void invoke<AiSetupSnapshot>('get_ai_setup_state')
+      .then((snapshot) => {
+        if (cancelled) {
+          return;
+        }
+
+        setAiSetup(snapshot);
+        setAiModelDraft(snapshot.selectedModel ?? snapshot.recommendedModel ?? '');
+        setOllamaUrlDraft(snapshot.ollamaUrl);
+        setAiStatus(snapshot.connectionError ?? '');
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setAiStatus(error instanceof Error ? error.message : 'Failed to load AI settings');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAiBusy(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [section]);
+
+  async function handleSaveAiSettings() {
+    setAiBusy(true);
+    setAiStatus('Saving AI settings...');
+
+    try {
+      const snapshot = await invoke<AiSetupSnapshot>('save_ai_settings', {
+        input: {
+          selectedModel: aiModelDraft.trim() ? aiModelDraft.trim() : null,
+          ollamaUrl: ollamaUrlDraft.trim() || 'http://127.0.0.1:11434',
+          onboardingComplete: true,
+          warmModel: true,
+        },
+      });
+
+      setAiSetup(snapshot);
+      setAiModelDraft(snapshot.selectedModel ?? snapshot.recommendedModel ?? '');
+      setOllamaUrlDraft(snapshot.ollamaUrl);
+      setAiStatus(snapshot.selectedModel ? `Using ${snapshot.selectedModel}` : 'AI settings saved');
+    } catch (error) {
+      setAiStatus(error instanceof Error ? error.message : 'Failed to save AI settings');
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function handleRunBenchmark() {
+    setAiBusy(true);
+    setAiStatus('Benchmarking local models...');
+
+    try {
+      const summary = await invoke<AiBenchmarkSummary>('benchmark_ai_models');
+      setAiBenchmark(summary);
+      if (summary.recommendedModel) {
+        setAiModelDraft(summary.recommendedModel);
+        setAiStatus(`Recommended model: ${summary.recommendedModel}`);
+      } else {
+        setAiStatus('Benchmark complete');
+      }
+
+      const snapshot = await invoke<AiSetupSnapshot>('get_ai_setup_state');
+      setAiSetup(snapshot);
+      setOllamaUrlDraft(snapshot.ollamaUrl);
+    } catch (error) {
+      setAiStatus(error instanceof Error ? error.message : 'Benchmark failed');
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   return (
     <div
@@ -1244,6 +1353,168 @@ function SettingsModal({
                   </SettingGroup>
                 </>
               )}
+            </div>
+          )}
+
+          {section === 'ai' && (
+            <div style={{ display: 'grid', gap: 22 }}>
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div style={{ fontSize: 22, fontWeight: 650, color: 'var(--color-text)' }}>
+                  AI model setup
+                </div>
+                <div style={{ color: 'var(--color-text-muted)', lineHeight: 1.55, maxWidth: 640 }}>
+                  Scholr uses a local Ollama server. Pick the Gemma model that fits your device, save it here, and run a benchmark to see which installed model is the best fit.
+                </div>
+              </div>
+
+              <SettingGroup title="Connection" description="Point the app at your local Ollama server.">
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <input
+                    value={ollamaUrlDraft}
+                    onChange={(e) => setOllamaUrlDraft(e.target.value)}
+                    placeholder="http://127.0.0.1:11434"
+                    style={{
+                      height: 40,
+                      borderRadius: 10,
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      background: 'rgba(255,255,255,0.03)',
+                      color: 'var(--color-text)',
+                      padding: '0 12px',
+                      fontSize: 13,
+                    }}
+                  />
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+                    Install Ollama, start the service, and make sure it is reachable from this machine.
+                  </div>
+                </div>
+              </SettingGroup>
+
+              <SettingGroup title="Installed models" description="Choose the model you want Scholr to warm up and use for flashcard generation.">
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {(aiSetup?.availableModels ?? []).length > 0 ? (aiSetup?.availableModels ?? []).map((model) => {
+                    const active = aiModelDraft === model.name;
+                    return (
+                      <button
+                        key={model.name}
+                        onClick={() => setAiModelDraft(model.name)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 16,
+                          padding: '10px 12px',
+                          borderRadius: 10,
+                          border: `1px solid ${active ? 'rgba(111,126,168,0.45)' : 'rgba(255,255,255,0.07)'}`,
+                          background: active ? 'rgba(111,126,168,0.16)' : 'rgba(255,255,255,0.02)',
+                          color: 'var(--color-text)',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                        }}
+                      >
+                        <div style={{ display: 'grid', gap: 2 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>{model.name}</span>
+                          <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                            {model.sizeBytes ? `${Math.round(model.sizeBytes / (1024 * 1024))} MB` : 'Size unavailable'}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: 12, color: active ? 'var(--color-accent-bright)' : 'var(--color-text-muted)' }}>
+                          {active ? 'Selected' : 'Use model'}
+                        </span>
+                      </button>
+                    );
+                  }) : (
+                    <div style={{ padding: 14, borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+                      No local Gemma model was detected yet. Install one with Ollama, then come back here to select it.
+                    </div>
+                  )}
+                </div>
+              </SettingGroup>
+
+              <SettingGroup title="Onboarding checklist" description="Use these steps if the model is not loading on first launch.">
+                <div style={{ display: 'grid', gap: 8, fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.55 }}>
+                  <div>1. Start Ollama and verify it listens on the local machine.</div>
+                  <div>2. Pull at least one Gemma model that your device can handle.</div>
+                  <div>3. Select that model above, then save it to warm it up automatically.</div>
+                  <div>4. Run the benchmark to compare installed models by latency and fit.</div>
+                </div>
+              </SettingGroup>
+
+              <SettingGroup title="Device benchmark" description="Measure the installed models and let the app recommend a better default for this device.">
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => void handleRunBenchmark()}
+                    disabled={aiBusy}
+                    style={{
+                      height: 38,
+                      padding: '0 14px',
+                      borderRadius: 10,
+                      border: '1px solid rgba(111,126,168,0.35)',
+                      background: 'rgba(111,126,168,0.18)',
+                      color: 'var(--color-text)',
+                      cursor: aiBusy ? 'wait' : 'pointer',
+                    }}
+                  >
+                    Run benchmark
+                  </button>
+                  <button
+                    onClick={() => void handleSaveAiSettings()}
+                    disabled={aiBusy}
+                    style={{
+                      height: 38,
+                      padding: '0 14px',
+                      borderRadius: 10,
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      background: 'rgba(255,255,255,0.03)',
+                      color: 'var(--color-text)',
+                      cursor: aiBusy ? 'wait' : 'pointer',
+                    }}
+                  >
+                    Save and warm model
+                  </button>
+                </div>
+
+                {aiStatus && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                    {aiStatus}
+                  </div>
+                )}
+
+                {aiBenchmark && aiBenchmark.results.length > 0 && (
+                  <div style={{ marginTop: 14, display: 'grid', gap: 8 }}>
+                    {aiBenchmark.results.map((result) => (
+                      <div
+                        key={result.model}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                          padding: '10px 12px',
+                          borderRadius: 10,
+                          border: '1px solid rgba(255,255,255,0.06)',
+                          background: 'rgba(255,255,255,0.02)',
+                        }}
+                      >
+                        <div style={{ display: 'grid', gap: 2 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)' }}>{result.model}</span>
+                          <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                            {result.success ? `${result.latencyMs} ms` : result.error ?? 'Benchmark failed'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 12, color: result.success ? 'var(--color-accent-bright)' : 'var(--color-warning)' }}>
+                          Score {result.score.toFixed(2)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ marginTop: 12, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                  <span>Current model: {aiSetup?.currentModel ?? 'none'}</span>
+                  <span>Onboarding: {aiSetup?.onboardingComplete ? 'complete' : 'needs setup'}</span>
+                  <span>Connection: {aiSetup?.connectionStatus ?? 'unknown'}</span>
+                </div>
+              </SettingGroup>
             </div>
           )}
 

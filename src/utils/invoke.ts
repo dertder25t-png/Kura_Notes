@@ -9,3 +9,22 @@ export async function invoke<T>(cmd: string, args?: Record<string, any>): Promis
   }
   return mockInvoke(cmd, args) as Promise<T>;
 }
+
+export async function logTelemetryEvent(
+  eventType: string,
+  noteId?: number | null,
+  metadata?: Record<string, unknown>
+): Promise<void> {
+  await invoke<void>('log_telemetry_event', {
+    eventType,
+    noteId: noteId ?? null,
+    metadataJson: JSON.stringify(metadata ?? {})
+  });
+}
+
+export async function processIdleChunk(chunk: string, noteId?: number | null): Promise<string> {
+  return invoke<string>('process_idle_chunk', {
+    chunk,
+    noteId: noteId ?? null
+  });
+}

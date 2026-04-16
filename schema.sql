@@ -40,3 +40,20 @@ CREATE TABLE IF NOT EXISTS flashcards (
   updated_at        TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS app_settings (
+  key         TEXT PRIMARY KEY,
+  value       TEXT NOT NULL,
+  updated_at  TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS telemetry_events (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_type    TEXT NOT NULL,
+  note_id       INTEGER REFERENCES notes(id) ON DELETE SET NULL,
+  metadata_json TEXT DEFAULT '{}',
+  created_at    TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_telemetry_event_type_created_at
+ON telemetry_events(event_type, created_at DESC);
+

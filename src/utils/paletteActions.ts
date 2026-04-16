@@ -40,7 +40,7 @@ export function buildActions(
           subtitle: 'Ask what the passage addresses',
           type: 'flashcard',
           front: `What topic does ${ref} address?`,
-          back: '[describe the topic from your notes]'
+          back: `Core theme of ${ref} based on this note context.`
         },
         {
           id: 'scripture-recall',
@@ -49,7 +49,7 @@ export function buildActions(
           title: 'Reference recall card',
           subtitle: 'Ask where the passage is found',
           type: 'flashcard',
-          front: 'Where is the main passage about [topic]?',
+          front: 'Where is the main passage for this note topic found?',
           back: ref
         },
         {
@@ -77,7 +77,7 @@ export function buildActions(
           subtitle: 'Ask what the original word means',
           type: 'flashcard',
           front: `What does the ${language} word '${word}' mean?`,
-          back: '[enter meaning]'
+          back: `${word} in ${language} means:`
         },
         {
           id: 'etymology-reverse',
@@ -86,7 +86,7 @@ export function buildActions(
           title: 'Reverse lookup card',
           subtitle: 'Ask for the original word from the English idea',
           type: 'flashcard',
-          front: `What is the ${language} origin of [the English term]?`,
+          front: `What is the ${language} origin of this English concept?`,
           back: `'${word}'`
         },
         {
@@ -96,7 +96,7 @@ export function buildActions(
           title: 'Format as study line',
           subtitle: 'Insert a structured markdown definition block',
           type: 'format',
-          snippet: `- ${word} :: [meaning]\n- ${language} root :: [context]`
+          snippet: `- ${word} :: meaning in ${language}\n- ${language} root :: usage context from this note`
         }
       ];
     }
@@ -112,7 +112,7 @@ export function buildActions(
           title: isChemical ? 'Equation recall card' : 'Formula recall card',
           subtitle: 'Ask for the full expression',
           type: 'flashcard',
-          front: isChemical ? 'Write the balanced equation for [reaction].' : 'State the formula for [concept].',
+          front: isChemical ? 'Write the balanced equation for this reaction.' : 'State the formula for this concept.',
           back: line
         },
         {
@@ -123,7 +123,7 @@ export function buildActions(
           subtitle: 'Ask when this formula applies',
           type: 'flashcard',
           front: `When do you use: ${line.slice(0, 40)}${line.length > 40 ? '...' : ''}`,
-          back: '[describe the condition or context]'
+          back: 'Use this formula under the conditions shown by this note section.'
         },
         {
           id: 'formula-parts',
@@ -133,7 +133,7 @@ export function buildActions(
           subtitle: 'Ask what each symbol means',
           type: 'flashcard',
           front: `In "${line}", what does each symbol represent?`,
-          back: '[define each component]'
+          back: 'Define each variable and constant exactly as used in class.'
         }
       ];
     }
@@ -149,7 +149,7 @@ export function buildActions(
           subtitle: 'Class, indication, side effect, and nursing consideration',
           type: 'flashcard',
           front: `${line} — class, indication, key side effect, nursing consideration?`,
-          back: 'Class: [drug class]\nIndication: [what it treats]\nKey SE: [main side effect]\nNursing: [key consideration]'
+          back: 'Class: pharmacologic class\nIndication: primary treatment use\nKey SE: highest-yield side effect\nNursing: key safety check'
         },
         {
           id: 'drug-mechanism',
@@ -159,7 +159,7 @@ export function buildActions(
           subtitle: 'Ask how the medication works',
           type: 'flashcard',
           front: `How does ${line} work (mechanism of action)?`,
-          back: '[describe mechanism]'
+          back: 'Describe receptor/pathway mechanism and expected physiologic effect.'
         },
         {
           id: 'drug-safety',
@@ -169,7 +169,7 @@ export function buildActions(
           subtitle: 'Ask for the key contraindication',
           type: 'flashcard',
           front: `What is the primary contraindication for ${line}?`,
-          back: '[key contraindication and reason]'
+          back: 'List the top contraindication and why it is unsafe.'
         }
       ];
 
@@ -184,7 +184,7 @@ export function buildActions(
           subtitle: 'Ask for the normal range',
           type: 'flashcard',
           front: `What is the normal range for ${line.split(/[\d]/)[0].trim()}?`,
-          back: `${line}\n[High = ?; Low = ?]`
+          back: `${line}\nHigh: expected concern findings\nLow: expected concern findings`
         },
         {
           id: 'lab-critical',
@@ -194,7 +194,7 @@ export function buildActions(
           subtitle: 'Ask when to notify immediately',
           type: 'flashcard',
           front: `What critical value for ${line.split(/[\d]/)[0].trim()} requires immediate action?`,
-          back: '[critical high] or [critical low]'
+          back: 'Document the critical high and critical low thresholds from this unit.'
         },
         {
           id: 'lab-format',
@@ -219,7 +219,7 @@ export function buildActions(
           subtitle: 'Ask what the letters stand for',
           type: 'flashcard',
           front: `What does ${acronym} stand for?`,
-          back: '[expand each letter]'
+          back: `Expand each letter of ${acronym} with the exact phrase.`
         },
         {
           id: 'mnemonic-batch',
@@ -230,7 +230,7 @@ export function buildActions(
           type: 'batch',
           cards: acronym.split('').map((letter) => ({
             front: `${letter} in ${acronym}?`,
-            back: `[what ${letter} stands for]`
+            back: `${letter} stands for:`
           }))
         },
         {
@@ -240,7 +240,7 @@ export function buildActions(
           title: 'Format as list',
           subtitle: 'Insert a structured list scaffold',
           type: 'format',
-          snippet: `${acronym}\n- ${acronym[0] ?? 'A'} :: [meaning]\n- ${acronym[1] ?? 'B'} :: [meaning]`
+          snippet: `${acronym}\n- ${acronym[0] ?? 'A'} :: meaning phrase\n- ${acronym[1] ?? 'B'} :: meaning phrase`
         }
       ];
     }
@@ -257,8 +257,8 @@ export function buildActions(
           title: `Name all ${context.metadata.count} ${noun}`,
           subtitle: 'Ask for the full set on one card',
           type: 'flashcard',
-          front: `What are the ${context.metadata.count} ${noun} of [topic]?`,
-          back: items.length > 0 ? items.map((item, index) => `${index + 1}. ${item}`).join('\n') : `[list the ${noun}]`
+          front: `What are the ${context.metadata.count} ${noun} in this topic?`,
+          back: items.length > 0 ? items.map((item, index) => `${index + 1}. ${item}`).join('\n') : `List all ${noun} shown in this section.`
         },
         {
           id: 'class-batch',
@@ -269,7 +269,7 @@ export function buildActions(
           type: 'batch',
           cards: items.map((item) => ({
             front: `What is ${item}?`,
-            back: `[define ${item}]`
+            back: `${item} means:`
           }))
         },
         {
@@ -296,7 +296,7 @@ export function buildActions(
           subtitle: 'Ask for the rule of law',
           type: 'flashcard',
           front: `${citation} — what rule of law does it establish?`,
-          back: 'Rule: [state the rule]\nFacts: [brief facts]\nHolding: [outcome]'
+          back: 'Rule: controlling legal rule\nFacts: shortest critical facts\nHolding: final court outcome'
         },
         {
           id: 'case-holding',
@@ -306,7 +306,7 @@ export function buildActions(
           subtitle: 'Ask for the one-line holding',
           type: 'flashcard',
           front: `What was the holding in ${citation}?`,
-          back: '[one-sentence holding]'
+          back: 'State the holding in one precise sentence.'
         },
         {
           id: 'case-format',
@@ -315,7 +315,7 @@ export function buildActions(
           title: 'Format as brief outline',
           subtitle: 'Insert Facts / Issue / Holding / Rule scaffold',
           type: 'format',
-          snippet: `- Facts :: ${citation}\n- Issue :: [issue]\n- Holding :: [holding]\n- Rule :: [rule]`
+          snippet: `- Facts :: ${citation}\n- Issue :: legal question\n- Holding :: court decision\n- Rule :: governing doctrine`
         }
       ];
     }
@@ -331,8 +331,8 @@ export function buildActions(
           title: 'Contrast card',
           subtitle: marker === 'cause' ? 'Ask for the effect' : 'Ask for the change',
           type: 'flashcard',
-          front: marker === 'cause' ? 'What causes or results in [outcome]?' : 'How did [topic] change before vs. after [event]?',
-          back: '[describe the contrast or change]'
+          front: marker === 'cause' ? 'What causes or results in this outcome?' : 'How did this topic change before vs. after the event?',
+          back: 'Describe the specific contrast or directional change in one concise statement.'
         },
         {
           id: 'comparison-reverse',
@@ -341,8 +341,8 @@ export function buildActions(
           title: 'Reverse comparison card',
           subtitle: 'Ask in the opposite direction',
           type: 'flashcard',
-          front: marker === 'cause' ? 'What effect follows [cause]?' : 'What was true before [topic]?',
-          back: '[reverse the relationship]'
+          front: marker === 'cause' ? 'What effect follows this cause?' : 'What was true before this topic shift?',
+          back: 'State the reverse relationship using cause-effect order.'
         },
         {
           id: 'comparison-format',
@@ -405,7 +405,7 @@ export function buildActions(
           subtitle: 'Keep the parent context on the front',
           type: 'flashcard',
           front: parentText ? `${parentText} → ${line}` : line,
-          back: '[answer or definition]'
+          back: 'Write the answer or definition that fits this nested point.'
         },
         {
           id: 'nested-batch',
@@ -423,7 +423,7 @@ export function buildActions(
           title: 'Format as nested outline',
           subtitle: 'Insert a scaffold for the block',
           type: 'format',
-          snippet: `- ${line}\n  - [subpoint]\n  - [subpoint]`
+          snippet: `- ${line}\n  - supporting subpoint\n  - supporting subpoint`
         }
       ];
     }
@@ -450,7 +450,7 @@ export function buildActions(
           title: 'Reverse definition card',
           subtitle: 'Ask for the term from the definition',
           type: 'flashcard',
-          front: `What term matches: ${definition || '[definition]'}`,
+          front: `What term matches: ${definition || 'this definition from your notes'}`,
           back: term
         },
         {
@@ -460,7 +460,7 @@ export function buildActions(
           title: 'Format as glossary entry',
           subtitle: 'Insert a glossary scaffold',
           type: 'format',
-          snippet: `- ${term} :: ${definition || '[definition]'}`
+          snippet: `- ${term} :: ${definition || 'definition from this note'}`
         }
       ];
     }
@@ -485,7 +485,7 @@ export function buildActions(
           title: 'Format as outline',
           subtitle: 'Insert a blank card scaffold',
           type: 'format',
-          snippet: `- ${line} :: [answer]`
+          snippet: `- ${line} :: concise answer`
         }
       ];
   }

@@ -242,3 +242,5 @@ export const EngineStatus: React.FC = () => {
 **UI/UX (React)**
 - [ ] Implement `EngineStatus.tsx` and place it over the `NoteEditor.tsx` textarea.
 - [ ] Ensure that when `engineState === 'THROTTLED'`, the manual `::` flashcard command palette is still fully functional, as it acts as the zero-latency bypass for power users who know exactly what they want to capture despite high background CPU loads.
+
+could

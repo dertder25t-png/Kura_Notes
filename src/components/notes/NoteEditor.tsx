@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { invoke } from '../../utils/invoke';
+import { invoke, logTelemetryEvent, processIdleChunk } from '../../utils/invoke';
 import { isTauriRuntime } from '../../utils/invoke';
 import { useDebounce } from '../../hooks/useDebounce';
 import { useProgressiveReveal } from '../../hooks/useProgressiveReveal';
@@ -12,6 +12,7 @@ import SelectionToolbar from './SelectionToolbar';
 import FormattingToolbar from './FormattingToolbar';
 import WikilinkPopover from './WikilinkPopover';
 import SmartColonPalette from './SmartColonPalette';
+import EngineStatus from '../ui/EngineStatus';
 
 const SMART_AUTOPICK_ENABLED_KEY = 'kura.smartColon.autopick.enabled';
 const SMART_AUTOPICK_THRESHOLD_KEY = 'kura.smartColon.autopick.threshold';
@@ -124,6 +125,8 @@ export default function NoteEditor({ noteId, classId, appMode = 'focus', toolbar
   const ghostRef = useRef<HTMLDivElement | null>(null);
   const editorRootRef = useRef<HTMLElement | null>(null);
   const smartMarkerIdRef = useRef(1);
+  const aiRunInFlightRef = useRef(false);
+  const lastAiChunkSignatureRef = useRef('');
   
   const debouncedText = useDebounce(text, 3000);
   const debouncedTitle = useDebounce(title, 3000);
@@ -369,6 +372,60 @@ export default function NoteEditor({ noteId, classId, appMode = 'focus', toolbar
     return fallback ? `What does this line mean in context?` : 'What is this?';
   };
 
+  const buildSectionFront = (allLines: string[], lineIndex: number, currentLine: string) => {
+    const heading = getHeadingContext(allLines, lineIndex)?.text?.trim();
+    if (heading) {
+      return heading;
+    }
+
+    const topicAnchor = findTopicAnchor(allLines, lineIndex).trim();
+    if (topicAnchor) {
+      return topicAnchor;
+    }
+
+    const fallback = cleanLineText(currentLine);
+    return fallback || 'This section';
+  };
+
+  const buildSectionBack = (allLines: string[], lineIndex: number, currentLine: string) => {
+    const currentRaw = allLines[lineIndex] ?? currentLine;
+    const currentDepth = getIndentDepth(currentRaw);
+    const currentText = cleanLineText(currentRaw);
+    const sectionLines = [currentText || cleanLineText(currentLine)];
+
+    for (let index = lineIndex + 1; index < allLines.length; index += 1) {
+      const raw = allLines[index] ?? '';
+      if (!raw.trim()) {
+        if (sectionLines.length > 1) {
+          break;
+        }
+        continue;
+      }
+
+      const depth = getIndentDepth(raw);
+      const nextHeading = raw.match(/^\s*(#{1,6})\s+(.+)$/);
+
+      if (nextHeading && depth <= currentDepth) {
+        break;
+      }
+
+      if (depth < currentDepth) {
+        break;
+      }
+
+      if (depth > currentDepth || /^[-*•◦▪■]\s+/.test(raw.trim()) || nextHeading) {
+        sectionLines.push(cleanLineText(raw));
+        continue;
+      }
+
+      if (sectionLines.length > 0 && depth === currentDepth) {
+        break;
+      }
+    }
+
+    return sectionLines.filter(Boolean).join('\n');
+  };
+
   const resolveFlashcardFields = (action: PaletteAction, allLines: string[], lineIndex: number, currentLine: string) => {
     const currentLineText = cleanLineText(currentLine);
     let front = (action.front ?? '').trim();
@@ -378,15 +435,14 @@ export default function NoteEditor({ noteId, classId, appMode = 'focus', toolbar
     const topicAnchor = findTopicAnchor(allLines, lineIndex);
 
     if (!back && currentLineText) {
-      const shouldDeriveFrontFromParent = !front || front === currentLineText;
-      if (shouldDeriveFrontFromParent) {
-        front = buildDefinitionFront(allLines, lineIndex, currentLineText);
+      if (!front || front === currentLineText) {
+        front = buildSectionFront(allLines, lineIndex, currentLineText);
       }
-      back = currentLineText;
+      back = buildSectionBack(allLines, lineIndex, currentLineText);
     }
 
     if (!front) {
-      front = buildDefinitionFront(allLines, lineIndex, currentLineText);
+      front = buildSectionFront(allLines, lineIndex, currentLineText);
     }
 
     const hasContextBack = !back && contextWindow.lines.length > 1;
@@ -395,18 +451,6 @@ export default function NoteEditor({ noteId, classId, appMode = 'focus', toolbar
       if (neighbors.length > 0) {
         back = `${currentLineText}\n\nContext:\n- ${neighbors.join('\n- ')}`;
       }
-    }
-
-    if (heading?.text && !front.toLowerCase().includes(heading.text.toLowerCase())) {
-      front = `In ${heading.text}, ${front.charAt(0).toLowerCase()}${front.slice(1)}`;
-    }
-
-    if (topicAnchor && !front.toLowerCase().includes(topicAnchor.toLowerCase())) {
-      front = `${topicAnchor}: ${front}`;
-    }
-
-    if (topicAnchor && back && !back.toLowerCase().includes(topicAnchor.toLowerCase())) {
-      back = `${topicAnchor} - ${back}`;
     }
 
     return {
@@ -518,6 +562,12 @@ export default function NoteEditor({ noteId, classId, appMode = 'focus', toolbar
           front: cardFields.front,
           back: cardFields.back
         });
+        void logTelemetryEvent('CARDS_GENERATED', sourceNoteId, {
+          count: 1,
+          sourceMode,
+          contextType: context.type,
+          contextLabel: context.label
+        });
         markSmartColonLine(context.type, lineIndex, action.title);
         bump('flashcardsCreated');
         if (sourceMode === 'auto') {
@@ -548,6 +598,12 @@ export default function NoteEditor({ noteId, classId, appMode = 'focus', toolbar
         }
 
         if (cards.length > 0) {
+          void logTelemetryEvent('CARDS_GENERATED', sourceNoteId, {
+            count: createdCardIds.length,
+            sourceMode,
+            contextType: context.type,
+            contextLabel: context.label
+          });
           markSmartColonLine(context.type, lineIndex, action.title);
           bump('flashcardsCreated', cards.length);
           if (sourceMode === 'auto' && createdCardIds.length > 0) {
@@ -595,6 +651,10 @@ export default function NoteEditor({ noteId, classId, appMode = 'focus', toolbar
       for (const cardId of autoCreateUndo.cardIds) {
         await invoke('delete_flashcard', { cardId });
       }
+      void logTelemetryEvent('UNDO_TRIGGERED', note?.id ?? noteId, {
+        count: autoCreateUndo.cardIds.length,
+        source: 'auto-create-undo'
+      });
       setAutoCreateUndo(null);
       setStatus('Auto-created card undone');
       window.setTimeout(() => setStatus(''), 1200);
@@ -771,13 +831,18 @@ export default function NoteEditor({ noteId, classId, appMode = 'focus', toolbar
     });
   }, [noteId]);
 
-  const isDirty = useMemo(() => {
+  const hasUnsavedChanges = useMemo(() => {
+    if (!note) return false;
+    return text !== note.rawContent || title !== note.title;
+  }, [text, title, note]);
+
+  const isDebouncedDirty = useMemo(() => {
     if (!note) return false;
     return debouncedText !== note.rawContent || debouncedTitle !== note.title;
   }, [debouncedText, debouncedTitle, note]);
 
   useEffect(() => {
-    if (!noteId || isDirty) {
+    if (!noteId || hasUnsavedChanges) {
       return;
     }
 
@@ -806,10 +871,10 @@ export default function NoteEditor({ noteId, classId, appMode = 'focus', toolbar
       window.removeEventListener('kura:data-invalidated', refreshCurrentNote as EventListener);
       unlisten?.();
     };
-  }, [noteId, isDirty]);
+  }, [noteId, hasUnsavedChanges]);
 
   useEffect(() => {
-    if (!note || !isDirty) return;
+    if (!note || !isDebouncedDirty) return;
 
     setStatus('Saving...');
     invoke<Note>('save_note', {
@@ -826,7 +891,44 @@ export default function NoteEditor({ noteId, classId, appMode = 'focus', toolbar
         window.setTimeout(() => setStatus(''), 1200);
       })
       .catch(() => setStatus('Save failed'));
-  }, [debouncedText, debouncedTitle]);
+  }, [debouncedText, debouncedTitle, isDebouncedDirty, note, classId, bump]);
+
+  useEffect(() => {
+    const activeNoteId = note?.id ?? noteId;
+    if (!activeNoteId) {
+      return;
+    }
+
+    const trimmed = debouncedText.trim();
+    if (trimmed.length < 150) {
+      return;
+    }
+
+    const chunk = trimmed.slice(-1800);
+    const signature = `${activeNoteId}:${chunk.length}:${chunk.slice(-120)}`;
+    if (lastAiChunkSignatureRef.current === signature || aiRunInFlightRef.current) {
+      return;
+    }
+
+    lastAiChunkSignatureRef.current = signature;
+    aiRunInFlightRef.current = true;
+    void processIdleChunk(chunk, activeNoteId)
+      .then((result) => {
+        if (result === 'TIMEOUT') {
+          setStatus('AI timeout - staying local');
+          window.setTimeout(() => setStatus(''), 1000);
+        } else if (result === 'MODEL_UNAVAILABLE' || result === 'MODEL_ERROR') {
+          setStatus('Gemma local model unavailable');
+          window.setTimeout(() => setStatus(''), 1600);
+        }
+      })
+      .catch(() => {
+        // Keep editor uninterrupted if idle processing fails.
+      })
+      .finally(() => {
+        aiRunInFlightRef.current = false;
+      });
+  }, [debouncedText, note?.id, noteId]);
 
   useEffect(() => {
     if (!noteId) return;
@@ -1605,6 +1707,8 @@ export default function NoteEditor({ noteId, classId, appMode = 'focus', toolbar
           onClose={closeSmartPalette}
         />
       ) : null}
+
+      <EngineStatus />
       
       <SelectionToolbar 
          selectedText={selectedText} 

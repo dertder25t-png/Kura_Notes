@@ -1,10 +1,56 @@
-import { ClassItem, Flashcard, FolderItem, Note } from '../types';
+import { AiBenchmarkSummary, AiSetupSnapshot, ClassItem, Flashcard, FolderItem, Note } from '../types';
 
 interface MockDB {
   classes: ClassItem[];
   folders: FolderItem[];
   notes: Note[];
     flashcards: Flashcard[];
+}
+
+interface MockAiSettings {
+    selectedModel: string | null;
+    ollamaUrl: string;
+    onboardingComplete: boolean;
+}
+
+const AI_SETTINGS_KEY = 'scholr_mock_ai_settings';
+
+function loadAiSettings(): MockAiSettings {
+    const raw = localStorage.getItem(AI_SETTINGS_KEY);
+    if (raw) {
+        try {
+            const parsed = JSON.parse(raw) as Partial<MockAiSettings>;
+            return {
+                selectedModel: parsed.selectedModel ?? null,
+                ollamaUrl: parsed.ollamaUrl ?? 'http://127.0.0.1:11434',
+                onboardingComplete: parsed.onboardingComplete ?? false,
+            };
+        } catch {
+            // ignore malformed mock settings
+        }
+    }
+
+    return {
+        selectedModel: null,
+        ollamaUrl: 'http://127.0.0.1:11434',
+        onboardingComplete: false,
+    };
+}
+
+function saveAiSettings(settings: MockAiSettings) {
+    localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function mockModels(): Array<{ name: string; sizeBytes: number }> {
+    return [
+        { name: 'gemma3:latest', sizeBytes: 4_000_000_000 },
+        { name: 'gemma2:latest', sizeBytes: 2_700_000_000 },
+        { name: 'gemma:latest', sizeBytes: 1_800_000_000 },
+    ];
+}
+
+function scoreMockModel(sizeBytes: number, latencyMs: number): number {
+    return 120000 / Math.max(latencyMs, 1) + 8000000000 / sizeBytes;
 }
 
 function getDb(): MockDB {
@@ -315,6 +361,88 @@ Click ✦ Synthesize to generate a clean study guide from this note.
             db.flashcards = db.flashcards.filter((card) => card.id !== args.cardId);
             saveDb(db);
             return null;
+        }
+
+        case 'log_telemetry_event': {
+            const key = 'scholr_mock_telemetry';
+            const existing = localStorage.getItem(key);
+            const events = existing ? JSON.parse(existing) as Array<Record<string, unknown>> : [];
+            events.push({
+                eventType: args.eventType,
+                noteId: args.noteId ?? null,
+                metadataJson: args.metadataJson ?? '{}',
+                createdAt: new Date().toISOString()
+            });
+            localStorage.setItem(key, JSON.stringify(events));
+            return null;
+        }
+
+        case 'process_idle_chunk': {
+            const chunk = String(args.chunk ?? '').trim();
+            if (chunk.length < 150) {
+                return 'SKIPPED_HEURISTICS';
+            }
+            return 'GENERATION_READY:0.85';
+        }
+
+        case 'get_ai_setup_state': {
+            const settings = loadAiSettings();
+            const models = mockModels();
+            return {
+                selectedModel: settings.selectedModel,
+                ollamaUrl: settings.ollamaUrl,
+                onboardingComplete: settings.onboardingComplete,
+                availableModels: models,
+                currentModel: settings.selectedModel,
+                recommendedModel: settings.selectedModel ?? models[0]?.name ?? null,
+                connectionStatus: 'ready',
+                connectionError: null,
+            } satisfies AiSetupSnapshot;
+        }
+
+        case 'save_ai_settings': {
+            const input = args.input ?? {};
+            const settings = {
+                selectedModel: input.selectedModel ?? null,
+                ollamaUrl: input.ollamaUrl ?? 'http://127.0.0.1:11434',
+                onboardingComplete: Boolean(input.onboardingComplete),
+            } satisfies MockAiSettings;
+            saveAiSettings(settings);
+
+            const models = mockModels();
+            return {
+                selectedModel: settings.selectedModel,
+                ollamaUrl: settings.ollamaUrl,
+                onboardingComplete: settings.onboardingComplete,
+                availableModels: models,
+                currentModel: settings.selectedModel,
+                recommendedModel: settings.selectedModel ?? models[0]?.name ?? null,
+                connectionStatus: 'ready',
+                connectionError: null,
+            } satisfies AiSetupSnapshot;
+        }
+
+        case 'benchmark_ai_models': {
+            const models = mockModels();
+            const results = models.map((model, index) => {
+                const latencyMs = 700 + index * 250 + Math.round(model.sizeBytes / 10_000_000);
+                return {
+                    model: model.name,
+                    latencyMs,
+                    score: scoreMockModel(model.sizeBytes, latencyMs),
+                    success: true,
+                    error: null,
+                };
+            }).sort((left, right) => right.score - left.score);
+
+            const recommendedModel = results[0]?.model ?? null;
+            saveAiSettings({
+                ...loadAiSettings(),
+                selectedModel: recommendedModel,
+                onboardingComplete: true,
+            });
+
+            return { results, recommendedModel } satisfies AiBenchmarkSummary;
         }
 
         default:
